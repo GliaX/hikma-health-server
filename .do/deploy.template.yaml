@@ -15,11 +15,11 @@ spec:
           value: production
           scope: RUN_AND_BUILD_TIME
         - key: NODE_VERSION
-          value: "24.14.0"
+          value: "22.14.0"
           scope: RUN_AND_BUILD_TIME
-        - key: NODE_OPTIONS
-          value: "--max-old-space-size=5120"
-          scope: RUN_AND_BUILD_TIME
+      git:
+        repo_clone_url: https://github.com/tareko/hikma-health-server.git
+        branch: fix/digitalocean-template
   databases:
     - name: db
       engine: PG
