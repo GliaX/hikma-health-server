@@ -14,7 +14,6 @@ import { createServerOnlyFn } from "@tanstack/react-start";
 import { v1 as uuidV1 } from "uuid";
 import cloneDeep from "lodash/cloneDeep";
 import UserClinicPermissions from "./user-clinic-permissions";
-import { authenticateWithLdap } from "@/lib/ldap-service";
 
 namespace User {
   // export type T = {
@@ -56,20 +55,12 @@ namespace User {
 
   export type RoleT = typeof RoleSchema.Encoded;
 
-  export const AuthProviderSchema = Schema.Union(
-    Schema.Literal("local"),
-    Schema.Literal("ldap"),
-  );
-
-  export type AuthProviderT = typeof AuthProviderSchema.Type;
-
   export const UserSchema = Schema.Struct({
     id: Schema.String,
     name: Schema.String,
     role: RoleSchema,
     email: Schema.String,
     hashed_password: Schema.String,
-    auth_provider: AuthProviderSchema,
     instance_url: Schema.OptionFromNullOr(Schema.String),
     clinic_id: Schema.OptionFromNullOr(Schema.String),
     is_deleted: Schema.Boolean,
@@ -235,7 +226,6 @@ namespace User {
       role: user.role,
       email: user.email,
       hashed_password: "***************",
-      auth_provider: user.auth_provider,
       instance_url: Option.none(),
       clinic_id: Option.none(),
       is_deleted: user.is_deleted,
@@ -275,7 +265,6 @@ namespace User {
       role: "role",
       email: "email",
       hashed_password: "hashed_password",
-      auth_provider: "auth_provider",
       instance_url: "instance_url",
       clinic_id: "clinic_id",
       is_deleted: "is_deleted",
@@ -292,7 +281,6 @@ namespace User {
       role: string;
       email: string;
       hashed_password: string;
-      auth_provider: Generated<string>;
       instance_url: string | null;
       clinic_id: string | null;
       is_deleted: Generated<boolean>;
@@ -339,15 +327,9 @@ namespace User {
         throw new Error("User not found");
       }
 
-      if (user.auth_provider === "ldap") {
-        const authenticated = await authenticateWithLdap(email, password);
-        if (!authenticated) {
-          throw new Error("Invalid LDAP credentials");
-        }
-      } else {
-        if (!(await bcrypt.compare(password, user.hashed_password))) {
-          throw new Error("Invalid password");
-        }
+      const hashedPassword = user.hashed_password;
+      if (!(await bcrypt.compare(password, hashedPassword))) {
+        throw new Error("Invalid password");
       }
 
       const userEntry = User.fromDbEntry(user);
