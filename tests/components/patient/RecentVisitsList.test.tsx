@@ -291,4 +291,28 @@ describe("RecentVisitsList", () => {
       { numRuns: 10 },
     );
   });
+
+  it("renders headerAction in the card header when provided", () => {
+    render(
+      <RecentVisitsList
+        visits={[]}
+        pagination={emptyPag}
+        onPageChange={noop}
+        headerAction={<button type="button">New Visit</button>}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "New Visit" })).toBeDefined();
+  });
+
+  it("renders nothing extra in the header when headerAction is omitted", () => {
+    const { container } = render(
+      <RecentVisitsList
+        visits={[]}
+        pagination={emptyPag}
+        onPageChange={noop}
+      />,
+    );
+    // Only the card header content — no stray buttons
+    expect(container.querySelectorAll("button").length).toBe(0);
+  });
 });

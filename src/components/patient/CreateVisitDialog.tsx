@@ -47,7 +47,7 @@ const toDatetimeLocal = (d: Date): string => format(d, "yyyy-MM-dd'T'HH:mm");
  * Handles: free-text, date, options (radio/select, single/multi), binary,
  * diagnosis, medicine, separator, and text-display field types.
  */
-function FormFieldEntry({
+export function FormFieldEntry({
   field,
   value,
   onChange,
