@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Card,
   CardContent,
@@ -23,6 +24,7 @@ type Props = {
   pagination: Pagination;
   onPageChange: (offset: number) => void;
   loading?: boolean;
+  headerAction?: React.ReactNode;
 };
 
 /** Format a visit's check-in date for display. Returns "—" for null/missing/invalid. */
@@ -121,12 +123,16 @@ export function RecentVisitsList({
   pagination,
   onPageChange,
   loading,
+  headerAction,
 }: Props) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Recent Visits</CardTitle>
-        <CardDescription>Patient's visit history</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div>
+          <CardTitle>Recent Visits</CardTitle>
+          <CardDescription>Patient's visit history</CardDescription>
+        </div>
+        {headerAction}
       </CardHeader>
       <CardContent>
         {visits.length === 0 ? (
