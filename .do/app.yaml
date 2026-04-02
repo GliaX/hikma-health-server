@@ -17,10 +17,7 @@ services:
         value: production
         scope: RUN_AND_BUILD_TIME
       - key: NODE_VERSION
-        value: "24.14.0"
-        scope: RUN_AND_BUILD_TIME
-      - key: NODE_OPTIONS
-        value: "--max-old-space-size=5120"
+        value: "22.14.0"
         scope: RUN_AND_BUILD_TIME
 databases:
   - name: db
