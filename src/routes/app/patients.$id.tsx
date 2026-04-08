@@ -33,6 +33,7 @@ import type Prescription from "@/models/prescription";
 import type PatientProblem from "@/models/patient-problem";
 import { useEffect, useState, useCallback } from "react";
 import { getAppointmentsByPatientId } from "@/lib/server-functions/appointments";
+import { getCurrentUser } from "@/lib/server-functions/auth";
 import type Clinic from "@/models/clinic";
 import type User from "@/models/user";
 import type { Pagination } from "@/lib/server-functions/builders";
@@ -40,6 +41,7 @@ import { PatientVitalsCard } from "@/components/patient/PatientVitalsCard";
 import { RecentVisitsList } from "@/components/patient/RecentVisitsList";
 import { PrescriptionsList } from "@/components/patient/PrescriptionsList";
 import { PatientProblemsList } from "@/components/patient/PatientProblemsList";
+import { CreateVisitDialog } from "@/components/patient/CreateVisitDialog";
 
 export const Route = createFileRoute("/app/patients/$id")({
   component: RouteComponent,
@@ -55,6 +57,7 @@ export const Route = createFileRoute("/app/patients/$id")({
 
     const result: {
       patient: Patient.EncodedT | null;
+      currentUser: User.EncodedT | null;
       vitals: PatientVital.EncodedT[];
       appointments: {
         appointment: Appointment.EncodedT;
@@ -70,6 +73,7 @@ export const Route = createFileRoute("/app/patients/$id")({
       problemsPagination: Pagination;
     } = {
       patient: null,
+      currentUser: null,
       vitals: [],
       appointments: [],
       visits: [],
@@ -92,13 +96,14 @@ export const Route = createFileRoute("/app/patients/$id")({
 
       result.patient = patient;
 
-      // Fetch appointments, visits, prescriptions, problems, and vitals in parallel
+      // Fetch appointments, visits, prescriptions, problems, vitals, and current user in parallel
       const [
         appointmentsRes,
         visitsRes,
         prescriptionsRes,
         problemsRes,
         vitals,
+        currentUser,
       ] = await Promise.all([
         getAppointmentsByPatientId({ data: { patientId } }).catch((e) => {
           console.error("Failed to fetch appointments:", e);
@@ -144,9 +149,11 @@ export const Route = createFileRoute("/app/patients/$id")({
           console.error("Failed to fetch vitals:", e);
           return [] as PatientVital.EncodedT[];
         }),
+        getCurrentUser({ data: {} }).catch(() => null),
       ]);
 
       result.appointments = appointmentsRes.data || [];
+      result.currentUser = currentUser;
 
       const visitsData = Result.getOrElse(visitsRes, {
         items: [] as VisitWithEvents[],
@@ -182,6 +189,7 @@ export const Route = createFileRoute("/app/patients/$id")({
 function RouteComponent() {
   const {
     patient,
+    currentUser,
     vitals: initialVitals,
     appointments,
     visits: initialVisits,
@@ -481,6 +489,15 @@ function RouteComponent() {
             pagination={visitsPag}
             onPageChange={handleVisitsPageChange}
             loading={visitsLoading}
+            headerAction={
+              <CreateVisitDialog
+                patientId={patientId}
+                clinicId={currentUser?.clinic_id ?? null}
+                providerId={currentUser?.id ?? ""}
+                providerName={currentUser?.name ?? ""}
+                onVisitCreated={() => handleVisitsPageChange(0)}
+              />
+            }
           />
         </TabsContent>
 
