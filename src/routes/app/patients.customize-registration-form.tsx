@@ -19,12 +19,38 @@ import {
 import { Button } from "@/components/ui/button";
 import React from "react";
 import { createServerFn } from "@tanstack/react-start";
+import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { getPatientRegistrationForm } from "@/lib/server-functions/patient-registration-forms";
+import { isUserSuperAdmin } from "@/lib/auth/request";
+import Token from "@/models/token";
+import User from "@/models/user";
+import { Option } from "effect";
 
 export const saveForm = createServerFn({ method: "POST" })
   .inputValidator((data: PatientRegistrationForm.EncodedT) => data)
   .handler(async ({ data }) => {
+    const token = getCookie("token");
+    let isSuperAdmin = false;
+    if (token) {
+      const userOption = await Token.getUser(token);
+      isSuperAdmin = Option.match(userOption, {
+        onNone: () => false,
+        onSome: (user) => user.role === User.ROLES.SUPER_ADMIN,
+      });
+    }
+
+    if (!isSuperAdmin) {
+      const hasDeletedBaseField = data.fields.some(
+        (f) => f.baseField && f.deleted,
+      );
+      if (hasDeletedBaseField) {
+        throw new Error(
+          "Unauthorized: only super admins can remove base fields",
+        );
+      }
+    }
+
     return PatientRegistrationForm.upsertPatientRegistrationForm(data);
   });
 
@@ -35,6 +61,7 @@ export const Route = createFileRoute(
   loader: async () => {
     return {
       patientRegistrationForm: await getPatientRegistrationForm(),
+      isSuperAdmin: await isUserSuperAdmin(),
     };
   },
 });
@@ -72,14 +99,14 @@ type State = PatientRegistrationForm.EncodedT;
 type Action =
   | { type: "set-form-state"; payload: { form: State } } // sets the entire form to a specific value. usefull for initial states and setting values to what is in the database.
   | { type: "add-field" } // generates a fieldID by default
-  | { type: "remove-field"; payload: { id: string } } // only removes fields that are not base fields
+  | { type: "remove-field"; payload: { id: string; isSuperAdmin?: boolean } } // base fields only removable by super admins
   | { type: "restore-field"; payload: { id: string } } // restores previously deleted fields
   | { type: "change-position"; payload: { id: string; position: number } }
   | {
       type: "update-field-label";
       payload: { translation: string; label: string; id: string };
     }
-  | { type: "toggle-field-required"; payload: { id: string } }
+  | { type: "toggle-field-required"; payload: { id: string; isSuperAdmin?: boolean } }
   | { type: "toggle-field-searchable"; payload: { id: string } }
   | { type: "toggle-field-shows-in-summary"; payload: { id: string } }
   | {
@@ -294,10 +321,10 @@ function reducer(state: State, action: Action) {
       break;
     }
     case "remove-field": {
-      const { id } = action.payload;
+      const { id, isSuperAdmin } = action.payload;
       const field = state.fields.find((f) => f.id === id);
-      // if there is no field, or if the field is a base field
-      if (field === undefined || field?.baseField) return;
+      // if there is no field, or if the field is a base field and user is not super admin
+      if (field === undefined || (field?.baseField && !isSuperAdmin)) return;
 
       // state.fields = state.fields.filter((field) => field.id !== id);
       // simply marking the field as deleted
@@ -366,9 +393,9 @@ function reducer(state: State, action: Action) {
       break;
     }
     case "toggle-field-required": {
-      const { id } = action.payload;
+      const { id, isSuperAdmin } = action.payload;
       const field = state.fields.find((f) => f.id === id);
-      if (field?.baseField) return;
+      if (field?.baseField && !isSuperAdmin) return;
 
       if (field) {
         field.required = !field.required;
@@ -410,7 +437,7 @@ const defaultEmptyForm: PatientRegistrationForm.EncodedT = {
 };
 
 function RouteComponent() {
-  const { patientRegistrationForm } = Route.useLoaderData();
+  const { patientRegistrationForm, isSuperAdmin } = Route.useLoaderData();
   // initial state is either loaded from the DB or on first deployment its loaded from a local state
 
   const initialState =
@@ -654,16 +681,22 @@ function RouteComponent() {
                       Edit Field
                     </Button>
 
-                    {baseField !== true && (
+                    {(baseField !== true || isSuperAdmin) && (
                       <Button
                         variant="outline"
                         className="text-destructive hover:bg-destructive/10"
-                        onClick={() =>
+                        onClick={() => {
+                          if (baseField && isSuperAdmin) {
+                            const confirmed = window.confirm(
+                              `"${Language.getTranslation(field.label, "en")}" is a core field. Removing it may affect existing patient records and synced mobile apps. Are you sure?`,
+                            );
+                            if (!confirmed) return;
+                          }
                           dispatch({
                             type: "remove-field",
-                            payload: { id: field.id },
-                          })
-                        }
+                            payload: { id: field.id, isSuperAdmin },
+                          });
+                        }}
                         size="sm"
                       >
                         Delete Field
@@ -977,10 +1010,11 @@ function RouteComponent() {
                             id={`required-${id}`}
                             className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                             checked={required}
+                            disabled={baseField && !isSuperAdmin}
                             onChange={() =>
                               dispatch({
                                 type: "toggle-field-required",
-                                payload: { id },
+                                payload: { id, isSuperAdmin },
                               })
                             }
                           />
@@ -989,6 +1023,11 @@ function RouteComponent() {
                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                           >
                             This field is required
+                            {baseField && isSuperAdmin && (
+                              <span className="ml-1 text-xs text-amber-600 font-normal">
+                                (core field)
+                              </span>
+                            )}
                           </label>
                         </div>
 
