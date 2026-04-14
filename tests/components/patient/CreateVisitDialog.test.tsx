@@ -326,7 +326,7 @@ describe("FormFieldEntry", () => {
     expect(container.querySelector("textarea")).not.toBeNull();
   });
 
-  it("renders an unsupported notice for file fields with no file input", () => {
+  it("renders a file input for file fields", () => {
     const field = {
       id: "f1",
       fieldType: "file",
@@ -338,8 +338,9 @@ describe("FormFieldEntry", () => {
     const { container } = render(
       <FormFieldEntry field={field} value={null} onChange={vi.fn()} />,
     );
-    expect(container.querySelector("input[type='file']")).toBeNull();
-    expect(container.textContent).toContain("not supported");
+    const input = container.querySelector("input[type='file']");
+    expect(input).not.toBeNull();
+    expect(input?.getAttribute("accept")).toBe("image/*");
   });
 
   it("shows required indicator (*) for required fields", () => {
