@@ -6,7 +6,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
@@ -18,6 +17,7 @@ import type { VisitWithEvents } from "@/lib/server-functions/visits";
 import type Event from "@/models/event";
 import type { Pagination } from "@/lib/server-functions/builders";
 import { PaginationControls } from "./PaginationControls";
+import { EventFormDataView } from "./EventFormDataView";
 
 type Props = {
   visits: VisitWithEvents[];
@@ -46,26 +46,47 @@ export const eventSummary = (event: Event.EncodedT): string =>
   event.event_type?.trim() ||
   (event.form_id ? `Form ${event.form_id.slice(0, 8)}` : "Event");
 
-/** Single event row inside a visit. */
+/** Single event row inside a visit — expands to show submitted form data. */
 export function EventRow({ event }: { event: Event.EncodedT }) {
-  return (
-    <div
-      className="flex items-start justify-between py-2 text-sm"
-      data-testid="event-row"
-    >
+  const formData = Array.isArray(event.form_data) ? event.form_data : [];
+  const hasData = formData.length > 0;
+
+  const summary = (
+    <div className="flex items-start justify-between w-full">
       <div className="space-y-0.5">
-        <p className="font-medium">{eventSummary(event)}</p>
+        <p className="font-medium text-sm">{eventSummary(event)}</p>
         <p className="text-xs text-muted-foreground">
           {formatVisitDate(event.created_at)}
         </p>
       </div>
-      {/*{event.form_data.length > 0 && (
-        <Badge variant="outline" className="text-xs">
-          {event.form_data.length}{" "}
-          {event.form_data.length === 1 ? "entry" : "entries"}
-        </Badge>
-      )}*/}
+      {hasData && (
+        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+          <span>
+            {formData.length} {formData.length === 1 ? "field" : "fields"}
+          </span>
+          <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
+        </div>
+      )}
     </div>
+  );
+
+  if (!hasData) {
+    return (
+      <div className="py-2" data-testid="event-row">
+        {summary}
+      </div>
+    );
+  }
+
+  return (
+    <Collapsible className="group py-2" data-testid="event-row">
+      <CollapsibleTrigger className="flex w-full text-left cursor-pointer">
+        {summary}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <EventFormDataView formData={formData} />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

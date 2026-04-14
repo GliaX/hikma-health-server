@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { Plus, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,9 +43,99 @@ type Props = {
 const toDatetimeLocal = (d: Date): string => format(d, "yyyy-MM-dd'T'HH:mm");
 
 /**
+ * Image upload input for a file field.
+ * Uploads to POST /api/forms/resources and stores the returned resource ID
+ * as the field value. Manages its own upload state internally.
+ */
+function FileFieldEntry({
+  value,
+  onChange,
+  label,
+  desc,
+}: {
+  value: string | null;
+  onChange: (value: string) => void;
+  label: React.ReactNode;
+  desc: React.ReactNode;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      const body = new FormData();
+      body.append("file", file);
+
+      // Browser sends session cookie automatically on same-origin fetch
+      const response = await fetch("/api/forms/resources", {
+        method: "POST",
+        body,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error ?? `Upload failed (${response.status})`);
+      }
+
+      const { id } = await response.json();
+      setFileName(file.name);
+      onChange(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      // Reset input so the same file can be re-selected after an error
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      {label}
+      {desc}
+      <div className="space-y-2">
+        {value && fileName && (
+          <p className="text-xs text-muted-foreground truncate">
+            Uploaded: {fileName}
+          </p>
+        )}
+        <label className="block w-fit">
+          <span
+            className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+              uploading
+                ? "cursor-not-allowed opacity-50"
+                : "cursor-pointer hover:bg-muted/50"
+            }`}
+          >
+            {uploading ? "Uploading…" : value ? "Replace image" : "Choose image"}
+          </span>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={handleFileChange}
+            disabled={uploading}
+          />
+        </label>
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Renders a single event form field for data entry.
  * Handles: free-text, date, options (radio/select, single/multi), binary,
- * diagnosis, medicine, separator, and text-display field types.
+ * diagnosis, medicine, file, separator, and text-display field types.
  */
 export function FormFieldEntry({
   field,
@@ -249,15 +339,15 @@ export function FormFieldEntry({
     );
   }
 
-  // File — not supported inside a dialog
+  // File / image upload
   if (field.fieldType === "file") {
     return (
-      <div className="space-y-1">
-        {label}
-        <p className="text-xs text-muted-foreground">
-          File uploads are not supported here.
-        </p>
-      </div>
+      <FileFieldEntry
+        value={value}
+        onChange={onChange}
+        label={label}
+        desc={desc}
+      />
     );
   }
 
@@ -366,13 +456,16 @@ export function CreateVisitDialog({
 
       // 2. If a form was selected, create the event linked to the new visit
       if (form) {
-        const fields: any[] = form.form_fields ?? [];
+        const fields = (form.form_fields ?? []) as any[];
         const formData = fields
           .filter(
             (f) => f.fieldType !== "text" && f.fieldType !== "separator",
           )
           .map((f) => ({
             fieldId: f.id,
+            name: f.name,
+            fieldType: f.fieldType,
+            inputType: f.inputType,
             value: formValues[f.id] ?? null,
           }));
 
@@ -407,7 +500,7 @@ export function CreateVisitDialog({
     }
   };
 
-  const formFields: any[] = selectedForm?.form_fields ?? [];
+  const formFields = (selectedForm?.form_fields ?? []) as any[];
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
