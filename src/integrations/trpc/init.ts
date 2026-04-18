@@ -105,6 +105,8 @@ export function requireClinicPermission(
   permission: UserClinicPermissions.UserPermissionsT,
   clinicId: string | null | undefined,
 ): void {
+  if (ctx.role === "super_admin") return;
+
   if (clinicId) {
     const clinicPerms = ctx.permissions[clinicId];
     if (!clinicPerms || !clinicPerms[permission]) {
