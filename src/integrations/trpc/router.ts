@@ -111,3 +111,8 @@ export type AppRouter = typeof appRouter;
  * Pass a TRPCContext with the auth header to get full middleware processing.
  */
 export const createServerCaller = createCallerFactory(commandAppRouter);
+
+/**
+ * Server-side caller for query procedures (e.g. patients.check_government_id, patients.similar).
+ */
+export const createQueryCaller = createCallerFactory(queryAppRouter);

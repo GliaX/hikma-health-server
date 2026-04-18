@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { DatePickerInput } from "@/components/date-picker-input";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import PatientRegistrationForm from "@/models/patient-registration-form";
 import Language from "@/models/language";
@@ -27,7 +27,7 @@ import {
 } from "@/lib/utils";
 import { Result } from "@/lib/result";
 import { getCookie } from "@tanstack/react-start/server";
-import { createServerCaller } from "@/integrations/trpc/router";
+import { createServerCaller, createQueryCaller } from "@/integrations/trpc/router";
 
 type RegisterPatientInput = {
   patient: {
@@ -82,6 +82,24 @@ export const getAllPatientRegistrationForms = createServerFn({
   return PatientRegistrationForm.getAll();
 });
 
+export const checkGovtIdExists = createServerFn({ method: "GET" })
+  .inputValidator((data: { government_id: string }) => data)
+  .handler(async ({ data }) => {
+    const token = getCookie("token");
+    if (!token) throw new Error("Unauthorized");
+    const caller = createQueryCaller({ authHeader: `Bearer ${token}` });
+    return caller.patients.check_government_id({ government_id: data.government_id });
+  });
+
+export const findSimilarPatients = createServerFn({ method: "GET" })
+  .inputValidator((data: { given_name: string; surname: string }) => data)
+  .handler(async ({ data }) => {
+    const token = getCookie("token");
+    if (!token) throw new Error("Unauthorized");
+    const caller = createQueryCaller({ authHeader: `Bearer ${token}` });
+    return caller.patients.similar({ given_name: data.given_name, surname: data.surname, limit: 5 });
+  });
+
 export const Route = createFileRoute("/app/patients/register")({
   component: RouteComponent,
   loader: async () => {
@@ -96,10 +114,50 @@ function RouteComponent() {
   const navigate = Route.useNavigate();
 
   const [lang, setLang] = useState<string>("en");
+  const [govtIdExists, setGovtIdExists] = useState(false);
+  const [similarPatients, setSimilarPatients] = useState<Array<{ id: string; given_name: string; surname: string; date_of_birth: string | null }>>([]);
 
   const { formState, handleSubmit, register, watch, setValue } = useForm({
     mode: "onSubmit",
   });
+
+  const watchedGovtId = watch("government_id");
+  const watchedGivenName = watch("given_name");
+  const watchedSurname = watch("surname");
+
+  // Debounced government ID duplicate check
+  useEffect(() => {
+    if (!watchedGovtId || watchedGovtId.trim().length < 2) {
+      setGovtIdExists(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const result = await checkGovtIdExists({ data: { government_id: watchedGovtId.trim() } });
+        setGovtIdExists(result.exists);
+      } catch {
+        setGovtIdExists(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [watchedGovtId]);
+
+  // Debounced similar-name search
+  useEffect(() => {
+    if (!watchedGivenName || !watchedSurname || watchedGivenName.trim().length < 2 || watchedSurname.trim().length < 2) {
+      setSimilarPatients([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const result = await findSimilarPatients({ data: { given_name: watchedGivenName.trim(), surname: watchedSurname.trim() } });
+        setSimilarPatients(result.data as any);
+      } catch {
+        setSimilarPatients([]);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [watchedGivenName, watchedSurname]);
 
   const onSubmit = async (data: any) => {
     const patientId = uuidv1();
@@ -164,7 +222,8 @@ function RouteComponent() {
       navigate({ to: `/app/patients/${result.patientId}` });
     } catch (error) {
       console.error("Failed to register patient:", error);
-      alert("Failed to register patient. Please try again.");
+      const reason = error instanceof Error ? error.message : String(error);
+      alert(`Failed to register patient: ${reason}`);
     }
   };
 
@@ -216,6 +275,7 @@ function RouteComponent() {
                 field.fieldType === "text" &&
                 field.column !== "primary_clinic_id"
               ) {
+                const isGovtId = field.column === "government_id";
                 return (
                   <div key={field.id} className="space-y-2">
                     <Label
@@ -229,10 +289,16 @@ function RouteComponent() {
                       data-inputtype={"text"}
                       data-column={field.column}
                       key={field.id}
+                      className={isGovtId && govtIdExists ? "border-destructive focus-visible:ring-destructive" : ""}
                       {...register(field.column, {
                         required: field.required && `${fieldLabel} is required`,
                       })}
                     />
+                    {isGovtId && govtIdExists && (
+                      <p className="text-sm text-destructive font-medium">
+                        A patient with this government ID is already registered.
+                      </p>
+                    )}
                     {fieldError && (
                       <p className="text-sm text-destructive">{fieldError.message as string}</p>
                     )}
@@ -421,13 +487,44 @@ function RouteComponent() {
               return <div></div>;
             })}
 
+          {similarPatients.length > 0 && (
+            <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4 space-y-2">
+              <p className="text-sm font-semibold text-yellow-800">
+                Similar patients found — please verify this is not a duplicate before submitting:
+              </p>
+              <ul className="space-y-1">
+                {similarPatients.map((p) => (
+                  <li key={p.id}>
+                    <Link
+                      to="/app/patients/$patientId"
+                      params={{ patientId: p.id }}
+                      className="text-sm text-yellow-900 underline hover:text-yellow-700"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {p.given_name} {p.surname}
+                      {p.date_of_birth ? ` — DOB: ${String(p.date_of_birth).split("T")[0]}` : ""}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-yellow-700">You can still proceed with registration if this is a different patient.</p>
+            </div>
+          )}
+
           <Button
             type="submit"
             data-testid={"submit-button"}
             className="primary"
+            disabled={govtIdExists || formState.isSubmitting}
           >
             {formState.isSubmitting ? "Submitting..." : "Submit"}
           </Button>
+          {govtIdExists && (
+            <p className="text-sm text-destructive">
+              Resolve the duplicate government ID before submitting.
+            </p>
+          )}
         </div>
       </form>
     </div>
