@@ -682,6 +682,7 @@ namespace Patient {
               OR LOWER(COALESCE(p.citizenship, '')) LIKE LOWER(${searchPattern})
               OR LOWER(COALESCE(p.hometown, '')) LIKE LOWER(${searchPattern})
               OR LOWER(CAST(p.id AS TEXT)) = LOWER(${searchQuery})
+              OR LOWER(COALESCE(p.government_id, '')) = LOWER(${searchQuery})
               OR EXISTS (
                 SELECT 1
                 FROM patient_additional_attributes paa
