@@ -267,6 +267,7 @@ namespace Sync {
     query: Q,
     tableName: string,
     clinicIds: string[] | null,
+    includeNullClinic = false,
   ): Q {
     if (clinicIds === null) return query;
     // Empty scope = caller has no clinic access. Fail closed.
@@ -277,9 +278,17 @@ namespace Sync {
       return (query as any).where("id", "in", clinicIds);
     }
 
-    // Simple column filter (clinic_id, primary_clinic_id, etc.)
+    // Simple column filter (clinic_id, primary_clinic_id, etc.). User peers
+    // also receive records with no clinic assignment (clients include
+    // unassigned records in their offline views).
     const clinicColumn = CLINIC_COLUMN_BY_TABLE[tableName];
     if (clinicColumn) {
+      if (includeNullClinic) {
+        const col = sql.ref(clinicColumn);
+        return (query as any).where(
+          sql`(${col} IN (${sql.join(clinicIds)}) OR ${col} IS NULL)`,
+        );
+      }
       return (query as any).where(clinicColumn, "in", clinicIds);
     }
 
@@ -302,15 +311,21 @@ namespace Sync {
 
     // Indirect association: record belongs to a patient
     if (INDIRECT_PATIENT_TABLES.has(tableName)) {
+      const scope = includeNullClinic
+        ? sql`primary_clinic_id IN (${sql.join(clinicIds)}) OR primary_clinic_id IS NULL`
+        : sql`primary_clinic_id IN (${sql.join(clinicIds)})`;
       return (query as any).where(
-        sql`patient_id IN (SELECT id FROM patients WHERE primary_clinic_id IN (${sql.join(clinicIds)}))`,
+        sql`patient_id IN (SELECT id FROM patients WHERE ${scope})`,
       );
     }
 
     // Indirect association: record belongs to a visit
     if (INDIRECT_VISIT_TABLES.has(tableName)) {
+      const scope = includeNullClinic
+        ? sql`clinic_id IN (${sql.join(clinicIds)}) OR clinic_id IS NULL`
+        : sql`clinic_id IN (${sql.join(clinicIds)})`;
       return (query as any).where(
-        sql`visit_id IN (SELECT id FROM visits WHERE clinic_id IN (${sql.join(clinicIds)}))`,
+        sql`visit_id IN (SELECT id FROM visits WHERE ${scope})`,
       );
     }
 
@@ -354,6 +369,10 @@ namespace Sync {
             "can_view_history",
           )
         : null;
+
+    // User peers also receive records with no clinic assignment; hubs
+    // keep the strict clinic filter.
+    const includeNullClinic = !isDeviceHub;
 
     const clientLastSyncDate = new Date(lastSyncedAt);
     const now = new Date();
@@ -410,6 +429,7 @@ namespace Sync {
           .selectAll(),
         server_table_name,
         hubClinicIds,
+        includeNullClinic,
       ).execute();
 
       // Query for records updated since last sync (but created before)
@@ -423,6 +443,7 @@ namespace Sync {
           .selectAll(),
         server_table_name,
         hubClinicIds,
+        includeNullClinic,
       ).execute();
 
       // Query for records deleted since last sync
@@ -437,6 +458,7 @@ namespace Sync {
                 .select("id"),
               server_table_name,
               hubClinicIds,
+              includeNullClinic,
             ).execute();
 
       // Never ship password hashes to sync peers.
@@ -474,6 +496,7 @@ namespace Sync {
           .selectAll(),
         "user_clinic_permissions",
         hubClinicIds,
+        includeNullClinic,
       ).execute(),
       updated: await applyClinicScope(
         ucpOwnOnly
@@ -482,6 +505,7 @@ namespace Sync {
           .selectAll(),
         "user_clinic_permissions",
         hubClinicIds,
+        includeNullClinic,
       ).execute(),
       deleted: [], // THERE are no deleted records. Any record that is gone, is just gone.
     };
