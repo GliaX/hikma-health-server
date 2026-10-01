@@ -56,7 +56,7 @@ export const Route = createFileRoute("/app/reports/$id/edit")({
     const isSuperAdmin = await isUserSuperAdmin();
     const data = await fetchAllComponentData({
       data: {
-        components: report.components,
+        reportId: report.id,
         startAt,
         endAt,
       },

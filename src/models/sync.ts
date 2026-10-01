@@ -5,6 +5,7 @@ import Visit from "./visit";
 import Prescription from "./prescription";
 // import Language from "./language";
 // import User from "./user";
+import UserClinicPermissions from "./user-clinic-permissions";
 import Clinic from "./clinic";
 import PatientAdditionalAttribute from "./patient-additional-attribute";
 import db from "@/db";
@@ -24,7 +25,6 @@ import { toSafeDateString } from "@/lib/utils";
 import User from "./user";
 import Device from "./device";
 import DevicePinCode from "./device-pin-code";
-import UserClinicPermissions from "./user-clinic-permissions";
 import type { RequestCaller } from "@/types";
 
 /** Returns true if the value looks like a raw epoch timestamp (10-13 digit numeric string or number, possibly negative for pre-1970 dates). */
@@ -254,12 +254,23 @@ namespace Sync {
    * Applies clinic-scoped filtering to a Kysely query builder for hub pulls.
    * Returns the query unchanged when clinicIds is null (non-hub peers).
    */
+  // Tables whose clinic association is indirect: records belong to a patient
+  // (which has a primary clinic) or to a visit (which has a clinic).
+  const INDIRECT_PATIENT_TABLES = new Set([
+    "events",
+    "patient_additional_attributes",
+    "patient_problems",
+  ]);
+  const INDIRECT_VISIT_TABLES = new Set(["patient_vitals"]);
+
   function applyClinicScope<Q>(
     query: Q,
     tableName: string,
     clinicIds: string[] | null,
   ): Q {
-    if (!clinicIds || clinicIds.length === 0) return query;
+    if (clinicIds === null) return query;
+    // Empty scope = caller has no clinic access. Fail closed.
+    if (clinicIds.length === 0) return (query as any).where(sql`1=0`);
 
     // Clinics table: filter by id directly
     if (tableName === "clinics") {
@@ -289,7 +300,21 @@ namespace Sync {
       );
     }
 
-    // No clinic association (e.g. patient_additional_attributes, events, drug_catalogue) — no filtering
+    // Indirect association: record belongs to a patient
+    if (INDIRECT_PATIENT_TABLES.has(tableName)) {
+      return (query as any).where(
+        sql`patient_id IN (SELECT id FROM patients WHERE primary_clinic_id IN (${sql.join(clinicIds)}))`,
+      );
+    }
+
+    // Indirect association: record belongs to a visit
+    if (INDIRECT_VISIT_TABLES.has(tableName)) {
+      return (query as any).where(
+        sql`visit_id IN (SELECT id FROM visits WHERE clinic_id IN (${sql.join(clinicIds)}))`,
+      );
+    }
+
+    // No clinic association (e.g. drug_catalogue) — no filtering
     return query;
   }
 
@@ -304,17 +329,30 @@ namespace Sync {
     peerType: Device.DeviceTypeT,
     caller: RequestCaller,
   ): Promise<DBChangeSet> => {
-    /** Determine what gets pushed to the client based on the peer type */
-    const ENTITIES_TO_PUSH_TO_CLIENT =
-      peerType === "sync_hub"
-        ? ENTITIES_TO_PUSH_TO_HUB
-        : ENTITIES_TO_PUSH_TO_MOBILE;
+    /**
+     * Determine what gets pushed to the client. Only authenticated device
+     * callers (sync hubs) receive the hub entity set — a user caller claiming
+     * peerType "sync_hub" is treated as a regular user peer.
+     */
+    const isDeviceHub = peerType === "sync_hub" && "device" in caller;
+    const ENTITIES_TO_PUSH_TO_CLIENT = isDeviceHub
+      ? ENTITIES_TO_PUSH_TO_HUB
+      : ENTITIES_TO_PUSH_TO_MOBILE;
     const result: DBChangeSet = {};
 
-    // Hub peers only receive data for their assigned clinics
-    const hubClinicIds: string[] | null =
-      peerType === "sync_hub" && "device" in caller
-        ? (caller.device.clinic_ids as unknown as string[]) ?? null
+    /**
+     * Clinic scope for pulls: hub devices receive data for their assigned
+     * clinics; user callers only for clinics where they hold
+     * can_view_history. Null means unrestricted (never the case for users).
+     */
+    const hubClinicIds: string[] | null = isDeviceHub
+      ? ((caller as { device: { clinic_ids: unknown } }).device
+          .clinic_ids as unknown as string[]) ?? null
+      : "user" in caller
+        ? await UserClinicPermissions.API.getClinicIdsWithPermission(
+            (caller as { user: { id: string } }).user.id,
+            "can_view_history",
+          )
         : null;
 
     const clientLastSyncDate = new Date(lastSyncedAt);
@@ -401,9 +439,15 @@ namespace Sync {
               hubClinicIds,
             ).execute();
 
+      // Never ship password hashes to sync peers.
+      const stripSecrets = (rows: Record<string, any>[]) =>
+        server_table_name === "users"
+          ? rows.map(({ hashed_password: _hashed_password, ...rest }) => rest)
+          : rows;
+
       const deltaData = createDeltaData(
-        newRecords,
-        updatedRecords,
+        stripSecrets(newRecords),
+        stripSecrets(updatedRecords),
         deletedRecords.map((record: { id: string }) => record.id),
       );
 
@@ -413,18 +457,26 @@ namespace Sync {
 
     // TODO: Pull out these table right up there near SyncableEntity definitions as a down only list of tables.
     // Process the user clinic permissions. They dont use last modified or server created attribute
+    // User callers only ever receive their OWN permission rows.
+    const ucpBase = db.selectFrom("user_clinic_permissions");
+    const ucpOwnOnly =
+      !isDeviceHub && "user" in caller
+        ? ucpBase.where(
+            "user_id",
+            "=",
+            (caller as { user: { id: string } }).user.id,
+          )
+        : ucpBase;
     result["user_clinic_permissions"] = {
       created: await applyClinicScope(
-        db
-          .selectFrom("user_clinic_permissions")
+        ucpOwnOnly
           .where("created_at", ">=", clientLastSyncDate)
           .selectAll(),
         "user_clinic_permissions",
         hubClinicIds,
       ).execute(),
       updated: await applyClinicScope(
-        db
-          .selectFrom("user_clinic_permissions")
+        ucpOwnOnly
           .where("created_at", "<", clientLastSyncDate)
           .where("updated_at", ">", clientLastSyncDate)
           .selectAll(),
@@ -503,11 +555,82 @@ namespace Sync {
       (typeof ENTITIES_TO_PULL_FROM_HUB)[number]
     > = isHub ? hubPushTableNameModelMap : pushTableNameModelMap;
 
+    // Only authenticated device callers get the hub entity set
+    const isDeviceHub = isHub && "device" in caller;
+
     // Hub authorization: build a set of allowed clinic IDs for fast lookups
     const hubAuthorizedClinicIds: Set<string> | null =
-      isHub && "device" in caller
+      isDeviceHub
         ? new Set((caller.device.clinic_ids as unknown as string[]) ?? [])
         : null;
+
+    /**
+     * User authorization: clinic scope derived from the caller's permissions.
+     * Different tables require different clinic-level permissions, mirroring
+     * the mobile client's own operation gates. Records outside the scope are
+     * skipped (logged) instead of failing the whole sync, because clients
+     * have no rejected-ids handling and would retry forever.
+     */
+    const USER_PUSH_PERMISSION_BY_TABLE: Record<
+      string,
+      UserClinicPermissions.UserPermissionsT
+    > = {
+      patients: "can_register_patients",
+      prescriptions: "can_prescribe_medications",
+      prescription_items: "can_prescribe_medications",
+      dispensing_records: "can_dispense_medications",
+    };
+    const userScopeCache = new Map<
+      string,
+      Set<string> | null
+    >();
+    const getUserScope = async (
+      tableName: string,
+    ): Promise<Set<string> | null> => {
+      if (isDeviceHub || !("user" in caller)) return null;
+      if (userScopeCache.has(tableName)) {
+        return userScopeCache.get(tableName) ?? null;
+      }
+      const permission =
+        USER_PUSH_PERMISSION_BY_TABLE[tableName] ?? "can_edit_records";
+      const ids = await UserClinicPermissions.API.getClinicIdsWithPermission(
+        (caller as { user: { id: string } }).user.id,
+        permission,
+      );
+      const set = new Set(ids);
+      userScopeCache.set(tableName, set);
+      return set;
+    };
+
+    /**
+     * Resolve the owning clinic of a record for push authorization,
+     * following patient/visit indirection where needed. Returns undefined
+     * when the record does not exist.
+     */
+    const resolveRecordClinicId = async (
+      tableName: string,
+      record: Record<string, any>,
+    ): Promise<string | null | undefined> => {
+      const clinicColumn = CLINIC_COLUMN_BY_TABLE[tableName];
+      if (clinicColumn) return record[clinicColumn] ?? null;
+      if (INDIRECT_PATIENT_TABLES.has(tableName) && record.patient_id) {
+        const row = await db
+          .selectFrom("patients")
+          .select("primary_clinic_id")
+          .where("id", "=", record.patient_id)
+          .executeTakeFirst();
+        return row ? (row.primary_clinic_id ?? null) : undefined;
+      }
+      if (INDIRECT_VISIT_TABLES.has(tableName) && record.visit_id) {
+        const row = await db
+          .selectFrom("visits")
+          .select("clinic_id")
+          .where("id", "=", record.visit_id)
+          .executeTakeFirst();
+        return row ? (row.clinic_id ?? null) : undefined;
+      }
+      return null;
+    };
 
     // Process the delta data from the client.
     // Iterate over the entity list (not Object.entries) to guarantee
@@ -577,6 +700,23 @@ namespace Sync {
           continue;
         }
 
+        // User authorization: skip (do not apply, do not fail the sync)
+        // records for clinics the caller has no write permission for.
+        const userScope = await getUserScope(tableName);
+        if (userScope) {
+          const recordClinicId = await resolveRecordClinicId(
+            tableName,
+            cleaned,
+          );
+          if (recordClinicId && !userScope.has(recordClinicId)) {
+            console.warn(
+              `[sync] User not authorized to push "${tableName}" record ${cleaned.id} — ` +
+                `clinic ${recordClinicId} outside caller's ${USER_PUSH_PERMISSION_BY_TABLE[tableName] ?? "can_edit_records"} scope; skipping`,
+            );
+            continue;
+          }
+        }
+
         await tableModelMap[tableName].Sync.upsertFromDelta(
           cleaned as any,
           caller,
@@ -584,6 +724,30 @@ namespace Sync {
       }
 
       for (const id of deltaData.deleted) {
+        // User authorization for deletes: resolve the record's clinic before
+        // deleting and skip when out of scope.
+        if (!isDeviceHub && "user" in caller) {
+          const userScope = await getUserScope(tableName);
+          if (userScope) {
+            const existing = await db
+              .selectFrom(tableName as any)
+              .selectAll()
+              .where("id", "=", id)
+              .executeTakeFirst();
+            if (existing) {
+              const recordClinicId = await resolveRecordClinicId(
+                tableName,
+                existing as Record<string, any>,
+              );
+              if (recordClinicId && !userScope.has(recordClinicId)) {
+                console.warn(
+                  `[sync] User not authorized to delete "${tableName}" record ${id} — clinic ${recordClinicId} outside caller's scope; skipping`,
+                );
+                continue;
+              }
+            }
+          }
+        }
         await tableModelMap[tableName].Sync.deleteFromDelta(id);
       }
     }

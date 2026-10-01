@@ -3,7 +3,12 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { authedProcedure, createTRPCRouter } from "../../init";
+import {
+  authedProcedure,
+  createTRPCRouter,
+  requireClinicPermission,
+  resolveClinicIdForRecord,
+} from "../../init";
 import Prescription from "@/models/prescription";
 import db from "@/db";
 import { sql } from "kysely";
@@ -43,6 +48,17 @@ export const prescriptionsCommandRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
+        const clinicId = input.visit_id
+          ? await resolveClinicIdForRecord("visits", input.visit_id)
+          : await resolveClinicIdForRecord("patients", input.patient_id);
+        if (clinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Referenced visit or patient not found",
+          });
+        }
+        requireClinicPermission(ctx, "can_prescribe_medications", clinicId);
+
         const prescriptionId = input.id ?? uuidv7();
 
         const insertValues = {
@@ -142,6 +158,22 @@ export const prescriptionsCommandRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
+        const prescriptionClinicId = await resolveClinicIdForRecord(
+          "prescriptions",
+          input.id,
+        );
+        if (prescriptionClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Prescription '${input.id}' not found`,
+          });
+        }
+        requireClinicPermission(
+          ctx,
+          "can_prescribe_medications",
+          prescriptionClinicId,
+        );
+
         const { id, updated_at: _updated_at, ...fields } = input;
         const updateSet: Record<string, unknown> = {};
 
@@ -219,6 +251,18 @@ export const prescriptionsCommandRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
+        const statusClinicId = await resolveClinicIdForRecord(
+          "prescriptions",
+          input.id,
+        );
+        if (statusClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Prescription '${input.id}' not found`,
+          });
+        }
+        requireClinicPermission(ctx, "can_prescribe_medications", statusClinicId);
+
         await db
           .updateTable(Prescription.Table.name)
           .set({
@@ -261,6 +305,18 @@ export const prescriptionsCommandRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
+        const pickupClinicId = await resolveClinicIdForRecord(
+          "prescriptions",
+          input.id,
+        );
+        if (pickupClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Prescription '${input.id}' not found`,
+          });
+        }
+        requireClinicPermission(ctx, "can_dispense_medications", pickupClinicId);
+
         await db
           .updateTable(Prescription.Table.name)
           .set({

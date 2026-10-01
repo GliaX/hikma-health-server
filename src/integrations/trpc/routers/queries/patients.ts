@@ -3,7 +3,11 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { authedProcedure } from "../../init";
+import {
+  authedProcedure,
+  isRecordClinicVisible,
+  patientClinicScopeIds,
+} from "../../init";
 import { createTRPCRouter } from "../../init";
 import db from "@/db";
 import { sql } from "kysely";
@@ -13,8 +17,15 @@ export const patientsQueryRouter = createTRPCRouter({
   /** Retrieve a single patient with registration form fields and attribute values */
   get: authedProcedure
     .input(z.object({ patient_id: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
+        if (!(await isRecordClinicVisible(ctx, "patients", input.patient_id))) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Patient '${input.patient_id}' not found`,
+          });
+        }
+
         const patient = await db
           .selectFrom("patients")
           .selectAll()
@@ -91,14 +102,25 @@ export const patientsQueryRouter = createTRPCRouter({
   /** Check whether a government ID already exists */
   check_government_id: authedProcedure
     .input(z.object({ government_id: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
-        const row = await db
+        const scope = patientClinicScopeIds(ctx);
+        let query = db
           .selectFrom("patients")
           .select(sql`1`.as("one"))
           .where("government_id", "=", input.government_id)
-          .where("is_deleted", "=", false)
-          .executeTakeFirst();
+          .where("is_deleted", "=", false);
+
+        if (scope !== null) {
+          query = query.where((eb) =>
+            eb.or([
+              eb("primary_clinic_id", "in", scope),
+              eb("primary_clinic_id", "is", null),
+            ]),
+          );
+        }
+
+        const row = await query.executeTakeFirst();
 
         return { exists: !!row };
       } catch (error) {
@@ -131,17 +153,18 @@ export const patientsQueryRouter = createTRPCRouter({
         limit: z.number().int().positive().max(100).optional(),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
         const { given_name, surname, limit = 20 } = input;
         const gn = given_name.trim().toLowerCase();
         const sn = surname.trim().toLowerCase();
+        const scope = patientClinicScopeIds(ctx);
 
         if (!gn && !sn) return { data: [] };
 
         // Score each name part: exact=3, prefix=2, contains=1
         // Use CASE expressions in SQL for ranking
-        const data = await db
+        let similarQuery = db
           .selectFrom("patients")
           .selectAll()
           .select(
@@ -167,7 +190,18 @@ export const patientsQueryRouter = createTRPCRouter({
               eb(sql`LOWER(given_name)`, "like", "%" + gn + "%"),
               eb(sql`LOWER(surname)`, "like", "%" + sn + "%"),
             ]),
-          )
+          );
+
+        if (scope !== null) {
+          similarQuery = similarQuery.where((eb) =>
+            eb.or([
+              eb("primary_clinic_id", "in", scope),
+              eb("primary_clinic_id", "is", null),
+            ]),
+          );
+        }
+
+        const data = await similarQuery
           .orderBy(sql`similarity_score`, "desc")
           .limit(limit)
           .execute();

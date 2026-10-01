@@ -3,7 +3,12 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { authedProcedure, createTRPCRouter } from "../../init";
+import {
+  authedProcedure,
+  createTRPCRouter,
+  requireClinicPermission,
+  resolveClinicIdForRecord,
+} from "../../init";
 import Appointment from "@/models/appointment";
 import db from "@/db";
 import { sql } from "kysely";
@@ -43,6 +48,8 @@ export const appointmentsCommandRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
+        requireClinicPermission(ctx, "can_edit_records", input.clinic_id);
+
         const appointmentId = input.id ?? uuidv7();
 
         const insertValues = {
@@ -131,6 +138,18 @@ export const appointmentsCommandRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
+        const appointmentClinicId = await resolveClinicIdForRecord(
+          "appointments",
+          input.id,
+        );
+        if (appointmentClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Appointment '${input.id}' not found`,
+          });
+        }
+        requireClinicPermission(ctx, "can_edit_records", appointmentClinicId);
+
         const { id, updated_at: _updated_at, ...fields } = input;
         const updateSet: Record<string, unknown> = {};
 
@@ -205,6 +224,18 @@ export const appointmentsCommandRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       try {
+        const cancelClinicId = await resolveClinicIdForRecord(
+          "appointments",
+          input.id,
+        );
+        if (cancelClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Appointment '${input.id}' not found`,
+          });
+        }
+        requireClinicPermission(ctx, "can_edit_records", cancelClinicId);
+
         await db
           .updateTable(Appointment.Table.name)
           .set({
@@ -248,6 +279,18 @@ export const appointmentsCommandRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
+        const completeClinicId = await resolveClinicIdForRecord(
+          "appointments",
+          input.id,
+        );
+        if (completeClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Appointment '${input.id}' not found`,
+          });
+        }
+        requireClinicPermission(ctx, "can_edit_records", completeClinicId);
+
         const updateSet: Record<string, unknown> = {
           status: "completed",
           updated_at: sql`now()::timestamp with time zone`,

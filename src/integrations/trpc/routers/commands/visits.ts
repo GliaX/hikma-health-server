@@ -3,7 +3,7 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { authedProcedure, createTRPCRouter } from "../../init";
+import { authedProcedure, createTRPCRouter, requireClinicPermission, resolveClinicIdForRecord } from "../../init";
 import db from "@/db";
 import { sql } from "kysely";
 import { flexTimestampOptional, toSqlTimestamp } from "@/lib/rpc-utils";
@@ -26,6 +26,24 @@ export const visitsCommandRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
+        const currentClinicId = await resolveClinicIdForRecord(
+          "visits",
+          input.id,
+        );
+        if (currentClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Visit '${input.id}' not found`,
+          });
+        }
+        requireClinicPermission(ctx, "can_edit_records", currentClinicId);
+        if (
+          input.clinic_id !== undefined &&
+          input.clinic_id !== currentClinicId
+        ) {
+          requireClinicPermission(ctx, "can_edit_records", input.clinic_id);
+        }
+
         const updateSet: Record<string, unknown> = {};
 
         if (input.provider_id !== undefined)

@@ -214,12 +214,59 @@ const validateCompiledSql = (compiledSql: string): void => {
 	}
 };
 
+// Tables that report components may query. Stored report SQL is authored by
+// super admins; this allowlist is defense-in-depth that keeps report queries
+// away from sensitive tables (sessions, secrets, permissions, audit data).
+const REPORT_ALLOWED_TABLES: ReadonlySet<string> = new Set([
+	"patients",
+	"clinics",
+	"users",
+	"visits",
+	"event_forms",
+	"events",
+	"resources",
+	"patient_additional_attributes",
+	"patient_registration_forms",
+	"prescriptions",
+	"appointments",
+	"patient_problems",
+	"patient_vitals",
+	"clinic_departments",
+	"drug_catalogue",
+	"clinic_inventory",
+	"inventory_transactions",
+	"drug_batches",
+	"prescription_items",
+	"dispensing_records",
+	"patient_observations",
+]);
+
+const SQL_TABLE_REF_PATTERN =
+	/\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_]*)/gi;
+const SQL_CTE_NAME_PATTERN = /(?:^|[,\s(])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+as\s*\(/gi;
+
+const validateSqlTables = (compiledSql: string): void => {
+	const cteNames = new Set<string>();
+	for (const match of compiledSql.matchAll(SQL_CTE_NAME_PATTERN)) {
+		cteNames.add(match[1].toLowerCase());
+	}
+	for (const match of compiledSql.matchAll(SQL_TABLE_REF_PATTERN)) {
+		const table = match[1].toLowerCase();
+		if (!REPORT_ALLOWED_TABLES.has(table) && !cteNames.has(table)) {
+			throw new Error(
+				`Compiled SQL rejected: references forbidden table "${table}"`,
+			);
+		}
+	}
+};
+
 const executeComponentQuery = async (
 	compiledSql: string,
 	startAt: string,
 	endAt: string,
 ): Promise<Record<string, unknown>[]> => {
 	validateCompiledSql(compiledSql);
+	validateSqlTables(compiledSql);
 
 	const rows = await db.transaction().execute(async (trx) => {
 		await sql`SET TRANSACTION READ ONLY`.execute(trx);
@@ -262,11 +309,14 @@ const fetchAllComponentDataInternal = async (
 		}),
 	);
 
+const fetchAllComponentDataInputSchema = z.object({
+	reportId: z.string().min(1),
+	startAt: z.string(),
+	endAt: z.string(),
+});
+
 export const fetchAllComponentData = createServerFn({ method: "POST" })
-	.inputValidator(
-		(data: { components: reportComponent[]; startAt: string; endAt: string }) =>
-			data,
-	)
+	.inputValidator(fetchAllComponentDataInputSchema)
 	.handler(async ({ data }): Promise<ComponentData[]> => {
 		const authorized = await isUserSuperAdmin();
 
@@ -277,8 +327,20 @@ export const fetchAllComponentData = createServerFn({ method: "POST" })
 			});
 		}
 
+		// The client only supplies the report ID; the executed SQL is loaded
+		// from the stored report on the server. Client-supplied SQL is never
+		// executed.
+		const report = await ReportModel.API.getById(data.reportId);
+
+		if (!report) {
+			return Promise.reject({
+				message: "Report not found",
+				source: "fetchAllComponentData",
+			});
+		}
+
 		return fetchAllComponentDataInternal(
-			data.components,
+			report.components,
 			data.startAt,
 			data.endAt,
 		);

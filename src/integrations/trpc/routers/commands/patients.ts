@@ -3,7 +3,7 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { authedProcedure, createTRPCRouter } from "../../init";
+import { authedProcedure, createTRPCRouter, requireClinicPermission, resolveClinicIdForRecord } from "../../init";
 import db from "@/db";
 import { sql } from "kysely";
 import { logAuditEvent } from "@/lib/server-functions/audit";
@@ -15,6 +15,18 @@ export const patientsCommandRouter = createTRPCRouter({
     .input(z.object({ patient_id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       try {
+        const patientClinicId = await resolveClinicIdForRecord(
+          "patients",
+          input.patient_id,
+        );
+        if (patientClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Patient '${input.patient_id}' not found`,
+          });
+        }
+        requireClinicPermission(ctx, "can_delete_records", patientClinicId);
+
         await db
           .updateTable("patients")
           .set({

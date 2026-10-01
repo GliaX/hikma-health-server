@@ -5,7 +5,12 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import type { TRPCRouterRecord } from "@trpc/server";
-import { authedProcedure, publicProcedure, requireClinicPermission } from "../init";
+import {
+  authedProcedure,
+  publicProcedure,
+  requireClinicPermission,
+  resolveClinicIdForRecord,
+} from "../init";
 import Patient from "@/models/patient";
 import PatientAdditionalAttribute from "@/models/patient-additional-attribute";
 import Visit from "@/models/visit";
@@ -279,6 +284,7 @@ export const commandProcedures = {
           attributes_count: (input.additional_attributes ?? []).length,
         };
       } catch (error) {
+        if (error instanceof TRPCError) throw error;
         Sentry.captureException(error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -297,6 +303,12 @@ export const commandProcedures = {
       try {
         const values = buildPatientInsertValues(input.patient);
         const patientId = values.id;
+
+        requireClinicPermission(
+          ctx,
+          "can_register_patients",
+          input.patient.primary_clinic_id ?? null,
+        );
 
         await db.transaction().execute(async (trx) => {
           await trx
@@ -394,6 +406,26 @@ export const commandProcedures = {
         const updateSet: Record<string, any> = {};
         const { fields } = input;
 
+        // Authorize against the patient's current clinic; moving a patient
+        // to a different clinic additionally requires permission there.
+        const currentClinicId = await resolveClinicIdForRecord(
+          "patients",
+          input.id,
+        );
+        if (currentClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Patient '${input.id}' not found`,
+          });
+        }
+        requireClinicPermission(ctx, "can_edit_records", currentClinicId);
+        if (
+          fields.primary_clinic_id !== undefined &&
+          fields.primary_clinic_id !== currentClinicId
+        ) {
+          requireClinicPermission(ctx, "can_edit_records", fields.primary_clinic_id);
+        }
+
         if (fields.given_name !== undefined)
           updateSet.given_name = fields.given_name;
         if (fields.surname !== undefined) updateSet.surname = fields.surname;
@@ -458,6 +490,8 @@ export const commandProcedures = {
     .input(createVisitSchema)
     .mutation(async ({ input, ctx }) => {
       try {
+        requireClinicPermission(ctx, "can_edit_records", input.clinic_id);
+
         const values = buildVisitInsertValues({
           patientId: input.patient_id,
           clinicId: input.clinic_id,
@@ -515,6 +549,19 @@ export const commandProcedures = {
     .input(createEventSchema)
     .mutation(async ({ input, ctx }) => {
       try {
+        // Events inherit the clinic of the visit they belong to.
+        const visitClinicId = await resolveClinicIdForRecord(
+          "visits",
+          input.visit_id,
+        );
+        if (visitClinicId === undefined) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Visit '${input.visit_id}' not found`,
+          });
+        }
+        requireClinicPermission(ctx, "can_edit_records", visitClinicId);
+
         const values = buildEventInsertValues(
           {
             patientId: input.patient_id,
@@ -574,6 +621,35 @@ export const commandProcedures = {
     .input(updateEventSchema)
     .mutation(async ({ input, ctx }) => {
       try {
+        // Events inherit the clinic of the visit they belong to. Editing an
+        // event recorded by another provider additionally requires
+        // can_edit_other_provider_event (mirrors the mobile client gate).
+        const event = await db
+          .selectFrom(Event.Table.name)
+          .select(["visit_id", "recorded_by_user_id"])
+          .where("id", "=", input.id)
+          .executeTakeFirst();
+        if (!event) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Event '${input.id}' not found`,
+          });
+        }
+        const visitClinicId = event.visit_id
+          ? await resolveClinicIdForRecord("visits", event.visit_id)
+          : null;
+        requireClinicPermission(ctx, "can_edit_records", visitClinicId);
+        if (
+          event.recorded_by_user_id &&
+          event.recorded_by_user_id !== ctx.userId
+        ) {
+          requireClinicPermission(
+            ctx,
+            "can_edit_other_provider_event",
+            visitClinicId,
+          );
+        }
+
         await Event.API.updateFormData(input.id, input.form_data, input.metadata);
 
         await logAuditEvent({
