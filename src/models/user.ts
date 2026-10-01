@@ -15,6 +15,15 @@ import { v1 as uuidV1 } from "uuid";
 import cloneDeep from "lodash/cloneDeep";
 import UserClinicPermissions from "./user-clinic-permissions";
 
+/**
+ * A throwaway bcrypt hash used solely to equalize the timing of the
+ * "user not found" path with the "wrong password" path in `signIn`,
+ * preventing user enumeration via response-time analysis.
+ * Precomputed once (bcrypt hash of a fixed placeholder string) so no
+ * hashing cost is incurred at startup or per request.
+ */
+const TIMING_DUMMY_HASH = "$2b$10$Wusy6FtuyhkG/nUC5nFLyuYswiJMWt9Xl4c.fbcaQL.frf08.5XBu";
+
 namespace User {
   // export type T = {
   //   id: string;
@@ -325,12 +334,15 @@ namespace User {
         .executeTakeFirst();
 
       if (!user) {
-        throw new Error("User not found");
+        // Run a full bcrypt comparison against a dummy hash so this path
+        // takes roughly the same time as a real credential check.
+        await bcrypt.compare(password, TIMING_DUMMY_HASH);
+        throw new Error("Invalid credentials");
       }
 
       const hashedPassword = user.hashed_password;
       if (!(await bcrypt.compare(password, hashedPassword))) {
-        throw new Error("Invalid password");
+        throw new Error("Invalid credentials");
       }
 
       const userEntry = User.fromDbEntry(user);
