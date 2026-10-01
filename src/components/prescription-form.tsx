@@ -300,8 +300,6 @@ export function PrescriptionForm({
     }
   };
 
-  console.log({ inventoryItems });
-
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
@@ -548,7 +546,6 @@ export function PrescriptionForm({
               </div>
             ) : (
               prescriptionItems.map((item, index) => {
-                console.log("(item.drug_id)", item.drug_id);
                 const medicationDetails = getMedicationDetails(item.drug_id);
                 const isExpanded = expandedItems[index] || false;
 

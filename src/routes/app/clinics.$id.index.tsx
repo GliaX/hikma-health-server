@@ -269,8 +269,7 @@ function RouteComponent() {
     capability: ClinicDepartment.DepartmentCapability,
   ) => {
     let toastId = toast.loading("Toggling capability...");
-    try {
-      console.log("Toggling capability:", capability);
+    try {      
       await toggleDepartmentCapability({
         data: { clinicId, departmentId, capability },
       });

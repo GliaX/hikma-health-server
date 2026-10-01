@@ -49,7 +49,6 @@ function Login() {
   const navigate = Route.useNavigate();
 
   const handleLogin = async () => {
-    console.log({ email, password });
     setLoadingAuth(true);
     const res = await fetch(`/api/auth/sign-in`, {
       method: "POST",
@@ -63,10 +62,8 @@ function Login() {
     });
     const data: { user: User.T; token: string } | { error: string } =
       await res.json();
-    console.log({ data });
     if ("error" in data) {
       setLoadingAuth(false);
-      console.error(data);
       alert(data.error);
     } else {
       navigate({ to: "/app" });

@@ -25,10 +25,8 @@ export const Route = createFileRoute("/api/auth/is-valid-token")({
           },
           onSome: async (token) => {
             const user = await Token.getUser(token);
-            console.log({ user, token });
             const isValid = Option.isSome(user);
-            if (!isValid) {
-              console.log("Invalid token, deleting cookie", token);
+            if (!isValid) {            
               deleteCookie("token");
             }
             return new Response(JSON.stringify({ isValid }), {

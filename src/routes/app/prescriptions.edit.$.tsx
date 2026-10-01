@@ -167,8 +167,7 @@ function RouteComponent() {
     },
   });
 
-  console.log({ currentUser });
-
+ 
   // Handle form submission
   const onSubmit = async (
     prescription: PrescriptionFormValues,
@@ -208,7 +207,6 @@ function RouteComponent() {
             onSubmit={(prescription, prescriptionItems) =>
               onSubmit(prescription, prescriptionItems)
             }
-            onPickupClinicChange={console.log}
             providers={providers}
             clinics={clinics.map((cl) => ({ id: cl.id, name: cl.name }))}
             medications={[]}

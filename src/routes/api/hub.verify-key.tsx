@@ -7,8 +7,6 @@ export const Route = createFileRoute("/api/hub/verify-key")({
       POST: async ({ request }) => {
         try {
           const { api_key } = await request.json();
-          console.log({ api_key });
-
           if (!api_key || typeof api_key !== "string") {
             return new Response(
               JSON.stringify({ error: "Missing or invalid api_key" }),
@@ -20,8 +18,6 @@ export const Route = createFileRoute("/api/hub/verify-key")({
           }
 
           const device = await Device.API.getByApiKey(api_key);
-
-          console.log({ device });
 
           if (!device) {
             return new Response(JSON.stringify({ error: "Invalid API key" }), {

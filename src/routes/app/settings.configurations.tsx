@@ -328,7 +328,6 @@ function RouteComponent() {
   };
 
   const handleToggleOverrideMobilePermissions = (checked: boolean) => {
-    console.log("handleToggleOverrideMobilePermissions", checked);
 
     // If it is currently enabled, just disable without confirmation
     if (!currentUser) return;
@@ -366,7 +365,6 @@ function RouteComponent() {
       confirmationText: overrideMobilePermissionsConfirmation,
       userInputText: "",
       onConfirm: (userInputText: string) => {
-        console.log({ userInputText });
         if (userInputText === overrideMobilePermissionsConfirmation) {
           saveConfiguration({
             data: {
@@ -396,9 +394,7 @@ function RouteComponent() {
       },
     });
   };
-
-  console.log({ organizationName });
-
+  
   return (
     <div className="container py-6">
       <div className="flex justify-between items-center mb-6">

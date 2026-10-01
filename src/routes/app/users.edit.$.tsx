@@ -70,13 +70,11 @@ const updateUser = createServerFn({ method: "POST" })
       });
     }
 
-    console.log("Before");
     await UserClinicPermissions.API.isAuthorizedWithClinic(
       data.user.clinic_id,
       "is_clinic_admin",
     );
-    console.log("After");
-
+  
     const res = await User.API.update(data.id, data.user);
     return res;
   });

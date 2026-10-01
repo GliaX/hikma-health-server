@@ -83,8 +83,6 @@ const getFormById = createServerFn({ method: "GET" })
       return data;
     })();
 
-    // console.log({ formFields });
-
     return {
       ...res,
       form_fields: formFields,
@@ -126,7 +124,6 @@ export const Route = createFileRoute("/app/event-forms/edit/$")({
 
 function RouteComponent() {
   const { form: initialForm, clinics } = Route.useLoaderData();
-  console.log({ initialForm });
   const navigate = Route.useNavigate();
   const formId = Route.useParams()._splat;
   const isEditing = !!initialForm?.id;
@@ -186,8 +183,7 @@ function RouteComponent() {
             option:
               | { label: string; value: string; __isNew__?: boolean }
               | string,
-          ) => {
-            console.log({ option }); // Object { label: "Damas", value: "Damas", __isNew__: true }
+          ) => {           
             if (typeof option === "string") {
               return option?.trim();
             } else if (typeof option === "object") {

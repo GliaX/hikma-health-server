@@ -81,10 +81,7 @@ async function fixUserRoles(db: Kysely<Database>): Promise<void> {
 
   for (const user of users) {
     if (!isValidRole(user.role)) {
-      // User has no role or invalid role - assign default role
-      console.log(
-        `User ${user.email} (${user.name}) has invalid role "${user.role}" - ${isDryRun ? "would assign" : "assigning"} "${DEFAULT_ROLE}"`,
-      );
+      // User has no role or invalid role - assign default role    
 
       if (!isDryRun) {
         await db
@@ -163,10 +160,7 @@ async function fixClinicPermissions(db: Kysely<Database>): Promise<void> {
       if (!existingClinicIds.has(clinic.id)) {
         // Missing permission entry
         if (isPrimaryClinic) {
-          // For primary clinic: create with role defaults
-          console.log(
-            `${isDryRun ? "Would create" : "Creating"} permissions for user ${user.email} (${userRole}) in their primary clinic ${clinic.name || clinic.id}`,
-          );
+          // For primary clinic: create with role defaults         
 
           if (isDryRun) {
             console.log(
@@ -175,10 +169,6 @@ async function fixClinicPermissions(db: Kysely<Database>): Promise<void> {
           }
         } else {
           // For non-primary clinic: create with all false permissions
-          console.log(
-            `${isDryRun ? "Would create" : "Creating"} no-access permissions for user ${user.email} in non-primary clinic ${clinic.name || clinic.id}`,
-          );
-
           if (isDryRun) {
             console.log(
               `Permissions: register=false, view=false, edit=false, delete=false, admin=false`,
@@ -217,7 +207,7 @@ async function fixClinicPermissions(db: Kysely<Database>): Promise<void> {
           } catch (error) {
             // Handle potential race conditions or constraint violations
             console.error(
-              `Failed to create permissions for user ${user.email} in clinic ${clinic.name}: ${error}`,
+              `Failed to create permissions for user ${user.email} : ${error}`,
             );
           }
         }
