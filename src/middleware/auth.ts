@@ -41,8 +41,6 @@ export const authMiddleware = createMiddleware({ type: "function" })
     (data: { capabilities?: (typeof User.CapabilitySchema.Type)[] }) => data,
   )
   .server(async ({ next, data, context }) => {
-    console.log("context around authMiddleware", { context, data });
-
     const { capabilities } = data;
 
     const token = getCookieToken();
@@ -62,8 +60,6 @@ export const authMiddleware = createMiddleware({ type: "function" })
       },
       onSome: (caller) => {
         const roleCapabilities = User.ROLE_CAPABILITIES[caller.role] || [];
-        console.log("!!!!!!!!!!!!!!");
-        console.log({ roleCapabilities, capabilities, caller });
         if (
           capabilities &&
           !capabilities.every((capability) =>

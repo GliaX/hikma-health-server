@@ -49,9 +49,7 @@ function RouteComponent() {
   const { clinics } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
-
-  console.log("Clinics:", clinics);
-
+  
   const handleEdit = (id: string) => {
     navigate({ to: `/app/clinics/edit/${id}` });
   };

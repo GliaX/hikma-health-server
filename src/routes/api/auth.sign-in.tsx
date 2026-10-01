@@ -25,8 +25,7 @@ export const Route = createFileRoute("/api/auth/sign-in")({
         const { email, password } = await request.json();
 
         try {
-          const { user, token } = await User.signIn(email, password);
-          console.log({ user, token });
+          const { user, token } = await User.signIn(email, password);          
 
           const clinic = user.clinic_id
             ? await Clinic.getById(user.clinic_id)

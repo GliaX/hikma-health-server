@@ -52,7 +52,6 @@ const saveAppointment = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { appointment, id, currentUserName } = data;
-    console.log({ appointment, id, currentUserName });
     return await Appointment.API.save(id, appointment, currentUserName);
   });
 
@@ -174,8 +173,6 @@ function RouteComponent() {
   const appointmentId = params._splat;
   const isEditing = !!appointmentId;
 
-  console.log({ appointment });
-
   const [submitting, setSubmitting] = useState(false);
   const [availableDepartments, setAvailableDepartments] = useState<
     ClinicDepartment.EncodedT[]
@@ -221,9 +218,6 @@ function RouteComponent() {
     }
   };
 
-  // print out the selected clinic
-  console.log("Selected Clinic:", form.watch("clinic_id"));
-
   const selectedClinic = form.watch("clinic_id");
 
   // Fetch departments when clinic changes
@@ -259,8 +253,7 @@ function RouteComponent() {
 
   // TODO: Default provider and clinic selection based on who is the current use
 
-  console.log(form.watch());
-
+  
   return (
     <div className="">
       <div className="flex-1 overflow-y-auto p-6">

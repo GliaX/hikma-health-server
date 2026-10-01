@@ -101,8 +101,6 @@ export const toggleDepartmentCapability = createServerFn({ method: "POST" })
       });
     }
 
-    // console.log("toggleDepartmentCapability", data);
-
     await UserClinicPermissions.API.isAuthorizedWithClinic(
       data.clinicId,
       "is_clinic_admin",

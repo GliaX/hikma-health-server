@@ -54,7 +54,6 @@ const reducer = (state: State, action: Action): State => {
     }
     case "set-field-key-value": {
       const { index, value, key } = action.payload;
-      // console.log(`fire change[${index}].${key} = VALUE(${value})`);
       return produce(state, (df) => {
         // @ts-expect-error
         df.fields[index][key] = value;
