@@ -295,7 +295,7 @@ describe("FormFieldEntry", () => {
     expect(container.querySelector("textarea")).toBeNull();
   });
 
-  it("renders a textarea for diagnosis fields", () => {
+  it("renders a structured diagnosis picker for diagnosis fields", () => {
     const field = {
       id: "f1",
       fieldType: "diagnosis",
@@ -306,12 +306,14 @@ describe("FormFieldEntry", () => {
       options: [],
     };
     const { container } = render(
-      <FormFieldEntry field={field} value="" onChange={vi.fn()} />,
+      <FormFieldEntry field={field} value={null} onChange={vi.fn()} />,
     );
-    expect(container.querySelector("textarea")).not.toBeNull();
+    // AsyncSelect (react-select) renders a search input, not a textarea
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(container.querySelector("input.react-select__input")).not.toBeNull();
   });
 
-  it("renders a textarea for medicine fields", () => {
+  it("renders a structured medicine entry for medicine fields", () => {
     const field = {
       id: "f1",
       fieldType: "medicine",
@@ -321,9 +323,12 @@ describe("FormFieldEntry", () => {
       required: false,
     };
     const { container } = render(
-      <FormFieldEntry field={field} value="" onChange={vi.fn()} />,
+      <FormFieldEntry field={field} value={null} onChange={vi.fn()} />,
     );
-    expect(container.querySelector("textarea")).not.toBeNull();
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /add medicine/i }),
+    ).not.toBeNull();
   });
 
   it("renders a file input for file fields", () => {
