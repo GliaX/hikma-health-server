@@ -8,13 +8,11 @@ export const Route = createFileRoute("/api/auth/is-valid-token")({
   server: {
     handlers: {
       POST: async ({}) => {
-        console.log("here");
         const token = Option.fromNullable(getCookie("token"));
         // const token = getCookieToken()
 
         return Option.match(token, {
           onNone: () => {
-            console.log("No token found, deleting cookie");
             deleteCookie("token");
             return new Response(JSON.stringify({ isValid: false }), {
               headers: {
@@ -39,7 +37,6 @@ export const Route = createFileRoute("/api/auth/is-valid-token")({
         });
       },
       GET: async () => {
-        console.log("trying to define get");
         return new Response("there are no get endpoints");
       },
     },

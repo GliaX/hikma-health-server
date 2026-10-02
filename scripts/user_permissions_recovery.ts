@@ -264,9 +264,22 @@ export async function runRecovery(): Promise<void> {
   }
 }
 
+// Expired session tokens accumulate forever otherwise; the recovery script
+// runs on every server boot (pnpm start), so this is a natural sweep point.
+async function purgeExpiredTokens(): Promise<void> {
+  const result = await db
+    .deleteFrom("tokens")
+    .where("expiry", "<=", new Date())
+    .executeTakeFirst();
+  console.log(
+    `[purge] expired tokens removed: ${Number(result.numDeletedRows ?? 0)}`,
+  );
+}
+
 // Run the script if executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   runRecovery()
+    .then(() => purgeExpiredTokens())
     .then(() => {
       console.log("\nExiting...");
       process.exit(0);

@@ -26,6 +26,13 @@ import {
   buildEventInsertValues,
 } from "@/lib/server-functions/builders";
 import { logAuditEvent } from "@/lib/server-functions/audit";
+import { createRateLimiter } from "@/lib/rate-limiter";
+
+/** Throttle credential login attempts per caller. */
+const loginLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 30,
+});
 
 const additionalAttributeSchema = z.object({
   attribute_id: z.string(),
@@ -134,12 +141,21 @@ export const commandProcedures = {
   /** Authenticate with email/password and receive a bearer token */
   login: publicProcedure
     .input(z.object({ email: z.string(), password: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const limit = loginLimiter.check(ctx.ip);
+      if (!limit.allowed) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Too many login attempts. Please try again later.",
+        });
+      }
       try {
+        // Match the web session lifetime (2h) — 24h tokens were an
+        // unnoted outlier for mobile.
         const { user, token } = await User.signIn(
           input.email,
           input.password,
-          24,
+          2,
         );
         return {
           token,

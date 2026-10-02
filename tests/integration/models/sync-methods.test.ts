@@ -14,11 +14,13 @@ const createdIds: {
   visits: string[];
   clinics: string[];
   users: string[];
+  userClinicPermissions: string[];
 } = {
   patients: [],
   visits: [],
   clinics: [],
   users: [],
+  userClinicPermissions: [],
 };
 
 // --- Fixtures ---
@@ -62,6 +64,26 @@ const insertUser = async (clinicId: string) => {
       last_modified: sql`now()`,
       server_created_at: sql`now()`,
       deleted_at: null,
+    })
+    .execute();
+
+  // Sync scoping is permission-driven: without a permissions row the user
+  // has no clinic scope and receives no records (fail-closed by design).
+  const ucpId = uuidV1();
+  createdIds.userClinicPermissions.push(ucpId);
+  await testDb
+    .insertInto("user_clinic_permissions")
+    .values({
+      id: ucpId,
+      user_id: id,
+      clinic_id: clinicId,
+      can_register_patients: true,
+      can_view_history: true,
+      can_edit_records: true,
+      can_delete_records: false,
+      is_clinic_admin: false,
+      created_at: sql`now()`,
+      updated_at: sql`now()`,
     })
     .execute();
   return id;
@@ -131,6 +153,11 @@ afterEach(async () => {
     await testDb.deleteFrom("visits").where("id", "=", id).execute();
   for (const id of createdIds.patients)
     await testDb.deleteFrom("patients").where("id", "=", id).execute();
+  for (const id of createdIds.userClinicPermissions)
+    await testDb
+      .deleteFrom("user_clinic_permissions")
+      .where("id", "=", id)
+      .execute();
   for (const id of createdIds.users)
     await testDb.deleteFrom("users").where("id", "=", id).execute();
   for (const id of createdIds.clinics)
@@ -138,6 +165,7 @@ afterEach(async () => {
 
   createdIds.visits.length = 0;
   createdIds.patients.length = 0;
+  createdIds.userClinicPermissions.length = 0;
   createdIds.users.length = 0;
   createdIds.clinics.length = 0;
 });

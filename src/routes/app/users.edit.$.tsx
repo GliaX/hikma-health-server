@@ -93,6 +93,14 @@ const registerUser = createServerFn({ method: "POST" })
       });
     }
 
+    const plainPassword = data.user.hashed_password as unknown as string;
+    if (typeof plainPassword !== "string" || plainPassword.length < 12) {
+      return Promise.reject({
+        message: "Password must be at least 12 characters",
+        source: "registerUser",
+      });
+    }
+
     await UserClinicPermissions.API.isAuthorizedWithClinic(
       data.user.clinic_id,
       "is_clinic_admin",

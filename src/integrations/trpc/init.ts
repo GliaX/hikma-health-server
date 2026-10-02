@@ -6,6 +6,7 @@ import UserClinicPermissions from "@/models/user-clinic-permissions";
 import { Option, pipe } from "effect";
 import type Clinic from "@/models/clinic";
 import db from "@/db";
+import { getClientIp } from "@/lib/rate-limiter";
 
 /**
  * Context available to all tRPC procedures.
@@ -14,6 +15,8 @@ import db from "@/db";
 export type TRPCContext = {
   /** Raw Authorization header value, if present */
   authHeader: string | null;
+  /** Rate-limit key for the caller (proxy-trust aware) */
+  ip: string;
 };
 
 /**
@@ -28,7 +31,7 @@ export type AuthedContext = {
 /** Build context from the incoming request */
 export function createTRPCContext(request: Request): TRPCContext {
   const authHeader = request.headers.get("Authorization");
-  return { authHeader };
+  return { authHeader, ip: getClientIp(request) };
 }
 
 const t = initTRPC.context<TRPCContext>().create({

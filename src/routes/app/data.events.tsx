@@ -108,7 +108,6 @@ function RouteComponent() {
       },
     })
       .then((res) => {
-        console.warn({ res });
         setEventsList(res.events);
         setPaginationResults(res);
         setCurrentPage(page);

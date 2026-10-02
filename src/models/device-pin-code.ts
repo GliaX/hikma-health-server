@@ -10,7 +10,7 @@ import {
   sql,
 } from "kysely";
 import { v1 as uuidV1 } from "uuid";
-import { createHash } from "crypto";
+import bcrypt from "bcrypt";
 
 namespace DevicePinCode {
   // ============================================
@@ -39,8 +39,12 @@ namespace DevicePinCode {
   // PIN Helpers
   // ============================================
 
+  /**
+   * PINs are 6 digits (1,000,000 combinations) — a fast/unsalted hash would
+   * be brute-forceable offline after any database leak. bcrypt is mandatory.
+   */
   export function hashPin(pin: string): string {
-    return createHash("sha256").update(pin).digest("hex");
+    return bcrypt.hashSync(pin, 10);
   }
 
   export function isValidPin(pin: string): boolean {

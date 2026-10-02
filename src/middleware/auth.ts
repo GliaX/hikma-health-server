@@ -40,7 +40,7 @@ export const authMiddleware = createMiddleware({ type: "function" })
   .inputValidator(
     (data: { capabilities?: (typeof User.CapabilitySchema.Type)[] }) => data,
   )
-  .server(async ({ next, data, context }) => {
+  .server(async ({ next, data }) => {
     const { capabilities } = data;
 
     const token = getCookieToken();
@@ -79,41 +79,10 @@ export const authMiddleware = createMiddleware({ type: "function" })
     });
   });
 
-// FIXME: Update capabilities to use the user-clinic-permissions in addition to the user roles
-/**
- * @deprecated
- */
-export const capabilitiesMiddleware = createMiddleware({
-  type: "function",
-}).server(async ({ next }) => {
-  console.log("Calling capabilities middlware");
-  const token = getCookieToken();
-  if (!token) {
-    return next({
-      context: {
-        capabilities: [] as (typeof User.CapabilitySchema.Type)[],
-      },
-    });
-  }
-  const caller = await Token.getUser(token);
-  const capabilities = Option.match(caller, {
-    onNone: () => {
-      deleteCookie("token");
-      return [] as (typeof User.CapabilitySchema.Type)[];
-    },
-    onSome: (caller) => User.ROLE_CAPABILITIES[caller.role] || [],
-  });
-  return next({
-    context: {
-      capabilities: capabilities as (typeof User.CapabilitySchema.Type)[],
-    },
-  });
-});
 
 export const permissionsMiddleware = createMiddleware({
   type: "function",
 }).server(async ({ next }) => {
-  console.log("Calling permssions middlware");
   return Sentry.startSpan(
     { name: "Getting user clinic permissions" },
     async () => {

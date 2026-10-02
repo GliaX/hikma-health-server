@@ -650,8 +650,6 @@ export const editReportComponent = createServerFn({ method: "POST" })
 			});
 		}
 
-		console.log("[editReportComponent]");
-		console.log(data);
 
 		const dbInfo = await getAIReportingInfo();
 		if (Result.isErr(dbInfo)) {

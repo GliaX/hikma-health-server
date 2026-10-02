@@ -80,30 +80,45 @@ describe("createRateLimiter", () => {
 });
 
 describe("getClientIp", () => {
-  it("should extract first IP from x-forwarded-for", () => {
+  const ORIGINAL_TRUST_PROXY = process.env.TRUST_PROXY;
+
+  afterEach(() => {
+    if (ORIGINAL_TRUST_PROXY === undefined) {
+      delete process.env.TRUST_PROXY;
+    } else {
+      process.env.TRUST_PROXY = ORIGINAL_TRUST_PROXY;
+    }
+  });
+
+  it("ignores client-supplied x-forwarded-for when TRUST_PROXY is not enabled", () => {
+    delete process.env.TRUST_PROXY;
+    const request = new Request("http://localhost", {
+      headers: { "x-forwarded-for": "1.2.3.4, 5.6.7.8" },
+    });
+    // Spoofed XFF must not become the rate-limit key.
+    expect(getClientIp(request)).toBe("unknown");
+  });
+
+  it("uses the first XFF entry when TRUST_PROXY is enabled", () => {
+    process.env.TRUST_PROXY = "true";
     const request = new Request("http://localhost", {
       headers: { "x-forwarded-for": "1.2.3.4, 5.6.7.8" },
     });
     expect(getClientIp(request)).toBe("1.2.3.4");
   });
 
-  it("should handle single IP in x-forwarded-for", () => {
-    const request = new Request("http://localhost", {
-      headers: { "x-forwarded-for": "10.0.0.1" },
-    });
-    expect(getClientIp(request)).toBe("10.0.0.1");
-  });
-
-  it("should return 'unknown' when header is missing", () => {
-    const request = new Request("http://localhost");
-    expect(getClientIp(request)).toBe("unknown");
-  });
-
-  it("should trim whitespace from IPs", () => {
+  it("trims whitespace from XFF entries when TRUST_PROXY is enabled", () => {
+    process.env.TRUST_PROXY = "true";
     const request = new Request("http://localhost", {
       headers: { "x-forwarded-for": "  1.2.3.4  , 5.6.7.8" },
     });
     expect(getClientIp(request)).toBe("1.2.3.4");
+  });
+
+  it("returns 'unknown' when header is missing (even with TRUST_PROXY)", () => {
+    process.env.TRUST_PROXY = "true";
+    const request = new Request("http://localhost");
+    expect(getClientIp(request)).toBe("unknown");
   });
 });
 

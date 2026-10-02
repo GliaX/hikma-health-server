@@ -9,12 +9,12 @@ type AuthFixtures = {
 export const test = base.extend<AuthFixtures>({
   authenticatedPage: async ({ page }, use) => {
     // Get credentials from environment variables
-    const email = process.env.VITE_ADMIN_EMAIL;
-    const password = process.env.VITE_ADMIN_PASS;
+    const email = process.env.E2E_ADMIN_EMAIL;
+    const password = process.env.E2E_ADMIN_PASS;
 
     if (!email || !password) {
       throw new Error(
-        "VITE_ADMIN_EMAIL and VITE_ADMIN_PASS environment variables must be set",
+        "E2E_ADMIN_EMAIL and E2E_ADMIN_PASS environment variables must be set",
       );
     }
 

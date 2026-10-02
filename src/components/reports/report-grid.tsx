@@ -58,7 +58,6 @@ export const ReportGrid = ({
           },
         },
       });
-      console.log({ updated });
 
       // Preserve the original id and reportId so the grid mapping stays consistent
       const merged: reportComponent = {
