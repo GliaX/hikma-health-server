@@ -599,4 +599,38 @@ describe("CreateVisitDialog", () => {
     expect(mockCreateVisit).not.toHaveBeenCalled();
     expect(onVisitCreated).not.toHaveBeenCalled();
   });
+
+  it("clears previous state when the dialog is reopened after creating a visit", async () => {
+    mockGetEventForms.mockResolvedValue([sampleForm]);
+    mockCreateVisit.mockResolvedValue({ success: true, id: "new-visit-id" });
+    mockCreateEvent.mockResolvedValue({ success: true, id: "new-event-id" });
+    render(<CreateVisitDialog {...defaultProps} />);
+
+    // First visit: select form, fill a field, submit
+    fireEvent.click(screen.getByRole("button", { name: /new visit/i }));
+    fireEvent.click(await screen.findByText(sampleForm.name));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    await screen.findByText("Complete the form for this visit.");
+    const complaint = screen.getByLabelText(/chief complaint/i);
+    fireEvent.change(complaint, { target: { value: "ear pain" } });
+    fireEvent.click(screen.getByRole("button", { name: /^create visit$/i }));
+    await waitFor(() =>
+      expect(mockToast.success).toHaveBeenCalledWith("Visit created"),
+    );
+
+    // Second visit: state from the first must be gone
+    fireEvent.click(screen.getByRole("button", { name: /new visit/i }));
+    await screen.findByText("Record a new visit for this patient.");
+    // No form preselected — the submit button reads "Create Visit", not "Continue"
+    expect(
+      screen.getByRole("button", { name: /^create visit$/i }),
+    ).toBeDefined();
+    // Step 2 field values are cleared
+    fireEvent.click(screen.getByText(sampleForm.name));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    const complaintSecondVisit = await screen.findByLabelText(
+      /chief complaint/i,
+    );
+    expect(complaintSecondVisit).toHaveProperty("value", "");
+  });
 });

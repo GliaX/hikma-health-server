@@ -448,8 +448,10 @@ export function FormFieldEntry({
 		return <Separator />;
 	}
 
+	const inputId = `visit-field-${field.id}`;
+
 	const label = (
-		<Label>
+		<Label htmlFor={inputId}>
 			{field.name}
 			{field.required && (
 				<span className="text-destructive ml-1" aria-hidden>
@@ -470,6 +472,7 @@ export function FormFieldEntry({
 				{label}
 				{desc}
 				<Input
+					id={inputId}
 					type="date"
 					value={value ?? ""}
 					onChange={(e) => onChange(e.target.value)}
@@ -489,6 +492,7 @@ export function FormFieldEntry({
 					{label}
 					{desc}
 					<Textarea
+						id={inputId}
 						value={value ?? ""}
 						onChange={(e) => onChange(e.target.value)}
 						required={field.required}
@@ -502,6 +506,7 @@ export function FormFieldEntry({
 				{label}
 				{desc}
 				<Input
+					id={inputId}
 					type={field.inputType === "number" ? "number" : "text"}
 					value={value ?? ""}
 					onChange={(e) => onChange(e.target.value)}
@@ -689,7 +694,10 @@ export function CreateVisitDialog({
 
 	const handleOpenChange = (v: boolean) => {
 		setOpen(v);
-		if (!v) resetState();
+		// Reset when opening (not just closing): closes performed via
+		// `setOpen(false)` after a successful create bypass this handler,
+		// so leftover state would otherwise leak into the next visit.
+		resetState();
 	};
 
 	const handleFieldChange = (fieldId: string, value: any) => {
