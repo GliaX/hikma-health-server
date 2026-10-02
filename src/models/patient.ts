@@ -614,6 +614,7 @@ namespace Patient {
           const countQuery = sql`
           SELECT COUNT(*) as total
           FROM patients
+          WHERE is_deleted = false
           ${clinicIds === null ? sql`` : sql`AND (${clinicIds.length > 0 ? sql`primary_clinic_id IN (${sql.join(clinicIds)}) OR primary_clinic_id IS NULL` : sql`primary_clinic_id IS NULL`})`}
         `.compile(db);
 
