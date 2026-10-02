@@ -246,6 +246,9 @@ export async function runRecovery(): Promise<void> {
     // THERE is no need to clean up orphaned permissions. Hikma Health is a no delete system. only soft-deletes are allowed.
     // Therefore, all permissions without valid users or clinics will be kept as is.
 
+    // Must run before this function's finally block destroys the connection.
+    await purgeExpiredTokens();
+
     console.log("=".repeat(50));
     console.log(
       `✅ User Permissions Recovery ${isDryRun ? "simulation" : ""} completed successfully!`,
@@ -279,7 +282,6 @@ async function purgeExpiredTokens(): Promise<void> {
 // Run the script if executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   runRecovery()
-    .then(() => purgeExpiredTokens())
     .then(() => {
       console.log("\nExiting...");
       process.exit(0);
