@@ -313,19 +313,18 @@ namespace User {
   }
 
   /**
-   * Authenticate a user by signing them in using an email and password
-   * The method also creates a token for the user, with an expiry date 2 hours in the future
+   * Verify an email/password pair against a user record.
+   *
+   * Timing-safe: on unknown emails a bcrypt comparison still runs against a
+   * dummy hash so this path takes roughly the same time as a real check.
+   * Does NOT mint a session token — callers that need one should use
+   * `signIn` (or call `Token.create` themselves).
    * @param {string} email - The user's email
    * @param {string} password - The user's password
-   * @param {number} validHours - The number of hours the token is valid for
-   * @returns {Promise<{ user: User.EncodedT; token: string }>} - The user if authentication is successful, null otherwise
+   * @returns {Promise<User.EncodedT>} - The encoded user if authentication is successful
    */
-  export const signIn = createServerOnlyFn(
-    async (
-      email: string,
-      password: string,
-      validHours: number = 2,
-    ): Promise<{ user: User.EncodedT; token: string }> => {
+  export const verifyCredentials = createServerOnlyFn(
+    async (email: string, password: string): Promise<User.EncodedT> => {
       const user = await db
         .selectFrom(Table.name)
         .where("email", "=", email)
@@ -350,15 +349,32 @@ namespace User {
         throw new Error("Failed to parse user data");
       }
 
+      return Schema.encodeSync(UserSchema)(userEntry.right);
+    },
+  );
+
+  /**
+   * Authenticate a user by signing them in using an email and password
+   * The method also creates a token for the user, with an expiry date 2 hours in the future
+   * @param {string} email - The user's email
+   * @param {string} password - The user's password
+   * @param {number} validHours - The number of hours the token is valid for
+   * @returns {Promise<{ user: User.EncodedT; token: string }>} - The user if authentication is successful, null otherwise
+   */
+  export const signIn = createServerOnlyFn(
+    async (
+      email: string,
+      password: string,
+      validHours: number = 2,
+    ): Promise<{ user: User.EncodedT; token: string }> => {
+      const user = await verifyCredentials(email, password);
+
       const token = await Token.create(
         user.id,
         new Date(Date.now() + validHours * 60 * 60 * 1000),
       );
 
-      return {
-        user: Schema.encodeSync(UserSchema)(userEntry.right),
-        token,
-      };
+      return { user, token };
     },
   );
 
