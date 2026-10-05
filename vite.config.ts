@@ -11,6 +11,25 @@ import { sentryTanstackStart } from "@sentry/tanstackstart-react/vite";
 import viteReact from "@vitejs/plugin-react";
 
 export default defineConfig({
+  // Global HTTP security headers for every response (pages + API).
+  // CSP ships as Report-Only first so violations are observable in the
+  // console without breaking the app; tighten to enforcing once clean.
+  nitro: {
+    routeRules: {
+      "/**": {
+        headers: {
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Strict-Transport-Security":
+            "max-age=31536000; includeSubDomains",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "Content-Security-Policy-Report-Only":
+            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'",
+        },
+      },
+    },
+  },
   // plugins: [
   //   // this is the plugin that enables path aliases
   //   viteTsConfigPaths({

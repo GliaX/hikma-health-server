@@ -47,38 +47,47 @@ describe("DevicePinCode.isValidPin", () => {
 });
 
 describe("DevicePinCode.hashPin", () => {
-  it("should return a 64-character hex string (SHA-256)", () => {
+  it("should return a bcrypt hash (60 chars, $2b$ prefix)", () => {
     const hash = DevicePinCode.hashPin("123456");
-    expect(hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(hash).toMatch(/^\$2[aby]\$10\$[./A-Za-z0-9]{53}$/);
   });
 
-  it("should be deterministic", () => {
-    expect(DevicePinCode.hashPin("123456")).toBe(DevicePinCode.hashPin("123456"));
-  });
-
-  it("should produce different hashes for different pins", () => {
-    expect(DevicePinCode.hashPin("123456")).not.toBe(DevicePinCode.hashPin("654321"));
-  });
-
-  it("property: hash is always 64 hex chars", () => {
-    fc.assert(
-      fc.property(fc.string(), (input) => {
-        const hash = DevicePinCode.hashPin(input);
-        expect(hash).toMatch(/^[a-f0-9]{64}$/);
-      }),
+  it("should embed a unique salt per call", () => {
+    expect(DevicePinCode.hashPin("123456")).not.toBe(
+      DevicePinCode.hashPin("123456"),
     );
   });
 
-  it("property: same input always produces same hash", () => {
-    fc.assert(
-      fc.property(fc.string(), (input) => {
-        expect(DevicePinCode.hashPin(input)).toBe(DevicePinCode.hashPin(input));
-      }),
-    );
+  it("should produce hashes that verify against the original pin", () => {
+    const bcrypt = require("bcrypt");
+    for (const pin of ["123456", "000000", "654321"]) {
+      expect(bcrypt.compareSync(pin, DevicePinCode.hashPin(pin))).toBe(true);
+    }
   });
-});
 
-describe("DevicePinCode.PIN_LENGTH", () => {
+  it("should produce hashes that do not verify against other pins", () => {
+    const bcrypt = require("bcrypt");
+    const hash = DevicePinCode.hashPin("123456");
+    expect(bcrypt.compareSync("654321", hash)).toBe(false);
+  });
+
+  it(
+    "property: every 6-digit pin verifies against its hash",
+    () => {
+      const bcrypt = require("bcrypt");
+      fc.assert(
+        fc.property(
+          fc.array(fc.constantFrom("0", "1", "2", "3", "4", "5", "6", "7", "8", "9"), { minLength: 6, maxLength: 6 }).map((arr) => arr.join("")),
+          (pin) => {
+            expect(bcrypt.compareSync(pin, DevicePinCode.hashPin(pin))).toBe(true);
+          },
+        ),
+        { numRuns: 3 },
+      );
+    },
+    30_000,
+  );
+});describe("DevicePinCode.PIN_LENGTH", () => {
   it("should be 6", () => {
     expect(DevicePinCode.PIN_LENGTH).toBe(6);
   });

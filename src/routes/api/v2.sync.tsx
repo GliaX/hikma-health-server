@@ -54,7 +54,8 @@ export const Route = createFileRoute("/api/v2/sync")({
               });
             })
             .with({ ok: true }, async ({ data: caller }) => {
-              // Ignore the device check for now, many of the users are actually not authenticated. this should only be checked for sync against the local hub syncs
+              // Sync scoping is derived from the authenticated caller kind
+              // (device hub vs user) inside Sync.getDeltaRecords/persistClientChanges.
               // Capture timestamp before running queries so the client's next sync
               const syncTimestamp = Date.now();
 

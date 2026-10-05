@@ -48,8 +48,9 @@ export const getDatabaseConfig = (): Record<string, any> => {
     // Use individual environment variables
     pgHost = process.env.DB_HOST || "localhost";
     pgDb = process.env.DB_NAME || "hikma_dev";
-    pgUser = process.env.DB_USER || "postgres";
-    pgPassword = process.env.DB_PASSWORD || "postgres";
+    // No silent weak-credential fallbacks: fail loudly when unset.
+    pgUser = process.env.DB_USER ?? "";
+    pgPassword = process.env.DB_PASSWORD ?? "";
   }
 
   const sslEnabled = getDatabaseSSLConfig();
@@ -60,13 +61,15 @@ export const getDatabaseConfig = (): Record<string, any> => {
     database: pgDb,
     user: pgUser,
     password: pgPassword,
-    // Only enable SSL when DB_SSL is explicitly set.
-    // Set DB_SSL_REJECT_UNAUTHORIZED=true in environments with
-    // properly signed certificates (e.g., AWS RDS, Azure).
-    // Render.com and similar providers use self-signed certificates,
-    // so rejectUnauthorized defaults to false when SSL is enabled.
+    // Only enable SSL when DB_SSL is explicitly set. Certificate validation
+    // defaults to ON. Providers with self-signed certificates (e.g. Render)
+    // must either inject their CA or explicitly set
+    // DB_SSL_REJECT_UNAUTHORIZED=false.
     ssl: sslEnabled
-      ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === "true" }
+      ? {
+          rejectUnauthorized:
+            process.env.DB_SSL_REJECT_UNAUTHORIZED !== "false",
+        }
       : undefined,
   };
 };

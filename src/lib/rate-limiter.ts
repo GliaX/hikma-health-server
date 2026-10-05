@@ -47,10 +47,21 @@ export const createRateLimiter = (config: RateLimiterConfig) => {
   };
 };
 
-/** Extract client IP from request headers. */
+/**
+ * Extract client IP from request headers.
+ *
+ * `x-forwarded-for` is client-controlled unless a trusted proxy overwrites
+ * it — trusting it blindly lets attackers rotate fake IPs to bypass rate
+ * limits. Set TRUST_PROXY=true only when the app runs behind a proxy that
+ * overwrites XFF (e.g. the platform's load balancer). Without it, all
+ * callers share a single rate-limit bucket (strict but safe).
+ */
 export const getClientIp = (request: Request): string => {
-  const forwarded = request.headers.get("x-forwarded-for");
-  return forwarded ? forwarded.split(",")[0].trim() : "unknown";
+  if (process.env.TRUST_PROXY === "true") {
+    const forwarded = request.headers.get("x-forwarded-for");
+    if (forwarded) return forwarded.split(",")[0].trim();
+  }
+  return "unknown";
 };
 
 /** Build a 429 Too Many Requests response. */

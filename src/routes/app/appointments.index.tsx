@@ -83,8 +83,6 @@ function RouteComponent() {
     return age;
   };
 
-  console.log({ appointments });
-
   // Function to handle status change
   const handleStatusChange = (appointmentId: string, newStatus: string) => {
     toggleAppointmentStatus({ data: { id: appointmentId, status: newStatus } })

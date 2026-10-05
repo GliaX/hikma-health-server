@@ -15,6 +15,15 @@ import { v1 as uuidV1 } from "uuid";
 import cloneDeep from "lodash/cloneDeep";
 import UserClinicPermissions from "./user-clinic-permissions";
 
+/**
+ * A throwaway bcrypt hash used solely to equalize the timing of the
+ * "user not found" path with the "wrong password" path in `signIn`,
+ * preventing user enumeration via response-time analysis.
+ * Precomputed once (bcrypt hash of a fixed placeholder string) so no
+ * hashing cost is incurred at startup or per request.
+ */
+const TIMING_DUMMY_HASH = "$2b$10$Wusy6FtuyhkG/nUC5nFLyuYswiJMWt9Xl4c.fbcaQL.frf08.5XBu";
+
 namespace User {
   // export type T = {
   //   id: string;
@@ -304,6 +313,47 @@ namespace User {
   }
 
   /**
+   * Verify an email/password pair against a user record.
+   *
+   * Timing-safe: on unknown emails a bcrypt comparison still runs against a
+   * dummy hash so this path takes roughly the same time as a real check.
+   * Does NOT mint a session token — callers that need one should use
+   * `signIn` (or call `Token.create` themselves).
+   * @param {string} email - The user's email
+   * @param {string} password - The user's password
+   * @returns {Promise<User.EncodedT>} - The encoded user if authentication is successful
+   */
+  export const verifyCredentials = createServerOnlyFn(
+    async (email: string, password: string): Promise<User.EncodedT> => {
+      const user = await db
+        .selectFrom(Table.name)
+        .where("email", "=", email)
+        .where("is_deleted", "=", false)
+        .selectAll()
+        .executeTakeFirst();
+
+      if (!user) {
+        // Run a full bcrypt comparison against a dummy hash so this path
+        // takes roughly the same time as a real credential check.
+        await bcrypt.compare(password, TIMING_DUMMY_HASH);
+        throw new Error("Invalid credentials");
+      }
+
+      const hashedPassword = user.hashed_password;
+      if (!(await bcrypt.compare(password, hashedPassword))) {
+        throw new Error("Invalid credentials");
+      }
+
+      const userEntry = User.fromDbEntry(user);
+      if (Either.isLeft(userEntry)) {
+        throw new Error("Failed to parse user data");
+      }
+
+      return Schema.encodeSync(UserSchema)(userEntry.right);
+    },
+  );
+
+  /**
    * Authenticate a user by signing them in using an email and password
    * The method also creates a token for the user, with an expiry date 2 hours in the future
    * @param {string} email - The user's email
@@ -317,36 +367,14 @@ namespace User {
       password: string,
       validHours: number = 2,
     ): Promise<{ user: User.EncodedT; token: string }> => {
-      const user = await db
-        .selectFrom(Table.name)
-        .where("email", "=", email)
-        .where("is_deleted", "=", false)
-        .selectAll()
-        .executeTakeFirst();
-
-      if (!user) {
-        throw new Error("User not found");
-      }
-
-      const hashedPassword = user.hashed_password;
-      if (!(await bcrypt.compare(password, hashedPassword))) {
-        throw new Error("Invalid password");
-      }
-
-      const userEntry = User.fromDbEntry(user);
-      if (Either.isLeft(userEntry)) {
-        throw new Error("Failed to parse user data");
-      }
+      const user = await verifyCredentials(email, password);
 
       const token = await Token.create(
         user.id,
         new Date(Date.now() + validHours * 60 * 60 * 1000),
       );
 
-      return {
-        user: Schema.encodeSync(UserSchema)(userEntry.right),
-        token,
-      };
+      return { user, token };
     },
   );
 

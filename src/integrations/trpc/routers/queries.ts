@@ -5,7 +5,12 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import type { TRPCRouterRecord } from "@trpc/server";
-import { authedProcedure, publicProcedure } from "../init";
+import {
+  authedProcedure,
+  isRecordClinicVisible,
+  patientClinicScopeIds,
+  publicProcedure,
+} from "../init";
 import Patient from "@/models/patient";
 import Visit from "@/models/visit";
 import Event from "@/models/event";
@@ -45,14 +50,24 @@ export const queryProcedures = {
         offset: z.number().int().nonnegative().optional(),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
         const { filters, limit = 50, offset = 0 } = input;
+        const scope = patientClinicScopeIds(ctx);
 
         let query = db
           .selectFrom(Patient.Table.name)
           .selectAll()
           .where("is_deleted", "=", false);
+
+        if (scope !== null) {
+          query = query.where((eb) =>
+            eb.or([
+              eb("primary_clinic_id", "in", scope),
+              eb("primary_clinic_id", "is", null),
+            ]),
+          );
+        }
 
         for (const [key, value] of Object.entries(filters)) {
           if (PATIENT_COLUMNS.has(key)) {
@@ -106,12 +121,13 @@ export const queryProcedures = {
         })
         .optional(),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
         const result = await Patient.API.getAllWithAttributes({
           limit: input?.limit,
           offset: input?.offset ?? 0,
           includeCount: true,
+          clinicIdsOverride: patientClinicScopeIds(ctx),
         });
         return result;
       } catch (error) {
@@ -135,8 +151,14 @@ export const queryProcedures = {
         limit: z.number().int().positive().optional(),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
+        if (!(await isRecordClinicVisible(ctx, "patients", input.patient_id))) {
+          return {
+            items: [],
+            pagination: { total: 0, offset: input.offset ?? 0, limit: input.limit ?? 50, hasMore: false },
+          };
+        }
         const result = await Visit.API.getByPatientId({
           patientId: input.patient_id,
           limit: input.limit ?? 50,
@@ -200,8 +222,14 @@ export const queryProcedures = {
         limit: z.number().int().positive().optional(),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
+        if (!(await isRecordClinicVisible(ctx, "patients", input.patient_id))) {
+          return {
+            items: [],
+            pagination: { total: 0, offset: input.offset ?? 0, limit: input.limit ?? 50, hasMore: false },
+          };
+        }
         const result = await Visit.API.getByPatientId({
           patientId: input.patient_id,
           limit: input.limit ?? 50,
@@ -228,8 +256,11 @@ export const queryProcedures = {
   /** Get all non-deleted events for a visit, ordered by most recent first */
   get_visit_events: authedProcedure
     .input(z.object({ visit_id: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
+        if (!(await isRecordClinicVisible(ctx, "visits", input.visit_id))) {
+          return { items: [] };
+        }
         const items = await Event.API.getByVisitId(input.visit_id);
         return { items };
       } catch (error) {

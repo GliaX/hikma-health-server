@@ -1,32 +1,38 @@
-import { Effect, Option } from "effect";
+import { Option } from "effect";
 import type {
   ColumnType,
-  Generated,
   Selectable,
-  Insertable,
-  Updateable,
 } from "kysely";
+import { createHash } from "crypto";
 import db from "@/db";
 import User from "./user";
 import { createServerOnlyFn } from "@tanstack/react-start";
 
+/**
+ * Session tokens are stored hashed (SHA-256) at rest — a database leak no
+ * longer yields usable session tokens. The plaintext bearer value is only
+ * ever known to the client; lookups hash the presented token before querying.
+ */
+export const hashToken = (token: string): string =>
+  createHash("sha256").update(token).digest("hex");
+
 namespace Token {
   export type T = {
     user_id: string;
-    token: string;
+    token_hash: string;
     expiry: Date;
   };
   export namespace Table {
     export const name = "tokens";
     export const columns = {
       user_id: "user_id",
-      token: "token",
+      token_hash: "token_hash",
       expiry: "expiry",
     };
 
     export interface T {
       user_id: string;
-      token: string;
+      token_hash: string;
       expiry: ColumnType<Date, string | undefined, never>;
     }
 
@@ -44,7 +50,7 @@ namespace Token {
     async (token: string): Promise<Option.Option<User.T>> => {
       let query = db.selectFrom(Table.name);
 
-      query = query.where("token", "=", token);
+      query = query.where("token_hash", "=", hashToken(token));
       query = query.where("expiry", ">", new Date().toISOString());
 
       const res = await query.select(["user_id"]).executeTakeFirst();
@@ -74,7 +80,10 @@ namespace Token {
    */
   export const invalidate = createServerOnlyFn(
     async (token: string): Promise<void> => {
-      await db.deleteFrom(Table.name).where("token", "=", token).execute();
+      await db
+        .deleteFrom(Table.name)
+        .where("token_hash", "=", hashToken(token))
+        .execute();
     },
   );
 
@@ -91,7 +100,7 @@ namespace Token {
         .insertInto(Token.Table.name)
         .values({
           user_id: userId,
-          token,
+          token_hash: hashToken(token),
           expiry: expiry.toISOString(),
         })
         .execute();
@@ -99,6 +108,19 @@ namespace Token {
       return token;
     },
   );
+
+  /**
+   * Delete expired tokens. Called opportunistically on server boot so the
+   * table does not grow without bound.
+   */
+  export const purgeExpired = createServerOnlyFn(async (): Promise<number> => {
+    const result = await db
+      .deleteFrom(Table.name)
+      .where("expiry", "<=", new Date().toISOString())
+      .executeTakeFirst();
+
+    return Number(result.numDeletedRows ?? 0);
+  });
 }
 
 export default Token;

@@ -15,8 +15,8 @@ This directory contains Playwright end-to-end tests for the Hikma Health Server 
 The e2e tests require the following environment variables to be set in your `.env` file:
 
 ```env
-VITE_ADMIN_EMAIL=your-admin-email@example.com
-VITE_ADMIN_PASS=your-admin-password
+E2E_ADMIN_EMAIL=your-admin-email@example.com
+E2E_ADMIN_PASS=your-admin-password
 ```
 
 These credentials are used by the authentication fixture to sign in before running tests that require authentication.
@@ -147,7 +147,7 @@ When tests fail:
 
 ## Troubleshooting
 
-### Tests fail with "VITE_ADMIN_EMAIL and VITE_ADMIN_PASS environment variables must be set"
+### Tests fail with "E2E_ADMIN_EMAIL and E2E_ADMIN_PASS environment variables must be set"
 
 Ensure your `.env` file contains the required environment variables with valid admin credentials.
 

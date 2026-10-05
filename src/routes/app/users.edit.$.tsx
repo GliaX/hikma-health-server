@@ -70,13 +70,11 @@ const updateUser = createServerFn({ method: "POST" })
       });
     }
 
-    console.log("Before");
     await UserClinicPermissions.API.isAuthorizedWithClinic(
       data.user.clinic_id,
       "is_clinic_admin",
     );
-    console.log("After");
-
+  
     const res = await User.API.update(data.id, data.user);
     return res;
   });
@@ -91,6 +89,14 @@ const registerUser = createServerFn({ method: "POST" })
     if (!context.userId) {
       return Promise.reject({
         message: "Unauthorized: Insufficient permissions",
+        source: "registerUser",
+      });
+    }
+
+    const plainPassword = data.user.hashed_password as unknown as string;
+    if (typeof plainPassword !== "string" || plainPassword.length < 12) {
+      return Promise.reject({
+        message: "Password must be at least 12 characters",
         source: "registerUser",
       });
     }

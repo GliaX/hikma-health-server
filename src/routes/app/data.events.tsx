@@ -108,7 +108,6 @@ function RouteComponent() {
       },
     })
       .then((res) => {
-        console.warn({ res });
         setEventsList(res.events);
         setPaginationResults(res);
         setCurrentPage(page);
@@ -151,13 +150,9 @@ function RouteComponent() {
 
   const pageNumbers = getPageNumbers();
 
-  // console.log({ eventsList, paginationResults, forms, selectedForm });
-
   // Table column names are present in the event form
   const tableColumns =
     forms.find((form) => form.id === selectedForm)?.form_fields || [];
-
-  // console.log({ tableColumns });
 
   return (
     <div className="container py-6">
@@ -218,11 +213,7 @@ function RouteComponent() {
                     const field = event.form_data.find(
                       (c) => c.fieldId === column.id,
                     );
-                    console.log({
-                      field,
-                      column,
-                      event_form_data: event.form_data,
-                    });
+                    
                     if (column.fieldType === "diagnosis") {
                       return (
                         <TableCell key={column.id}>
@@ -314,8 +305,6 @@ function RenderDiagnosisField({
 }: {
   field?: { value: Array<{ code: string; desc: string }> };
 }) {
-  console.log(field?.value?.map((diagnosis) => diagnosis?.desc).join(", "));
-  console.log(field?.value);
   return (
     <div>
       {field?.value
@@ -342,9 +331,7 @@ function RenderMedicineField({
       route: string;
     }>;
   };
-}) {
-  console.log(field?.value?.map((medicine) => medicine?.name)?.join(", "));
-  console.log(field?.value);
+}) {  
   return (
     <div>
       {field?.value?.map((medicine) => (

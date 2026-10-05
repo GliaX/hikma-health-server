@@ -149,8 +149,6 @@ function RouteComponent() {
   const pageNumbers = getPageNumbers();
   const selectedClinic = clinics?.find((c: any) => c.id === selectedClinicId);
 
-  console.log({ inventory });
-
   return (
     <div className="container py-6">
       <div className="flex justify-between items-center mb-6">

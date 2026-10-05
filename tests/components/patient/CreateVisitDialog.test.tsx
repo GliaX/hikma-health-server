@@ -295,7 +295,7 @@ describe("FormFieldEntry", () => {
     expect(container.querySelector("textarea")).toBeNull();
   });
 
-  it("renders a textarea for diagnosis fields", () => {
+  it("renders a structured diagnosis picker for diagnosis fields", () => {
     const field = {
       id: "f1",
       fieldType: "diagnosis",
@@ -306,12 +306,14 @@ describe("FormFieldEntry", () => {
       options: [],
     };
     const { container } = render(
-      <FormFieldEntry field={field} value="" onChange={vi.fn()} />,
+      <FormFieldEntry field={field} value={null} onChange={vi.fn()} />,
     );
-    expect(container.querySelector("textarea")).not.toBeNull();
+    // AsyncSelect (react-select) renders a search input, not a textarea
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(container.querySelector("input.react-select__input")).not.toBeNull();
   });
 
-  it("renders a textarea for medicine fields", () => {
+  it("renders a structured medicine entry for medicine fields", () => {
     const field = {
       id: "f1",
       fieldType: "medicine",
@@ -321,9 +323,12 @@ describe("FormFieldEntry", () => {
       required: false,
     };
     const { container } = render(
-      <FormFieldEntry field={field} value="" onChange={vi.fn()} />,
+      <FormFieldEntry field={field} value={null} onChange={vi.fn()} />,
     );
-    expect(container.querySelector("textarea")).not.toBeNull();
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /add medicine/i }),
+    ).not.toBeNull();
   });
 
   it("renders a file input for file fields", () => {
@@ -593,5 +598,39 @@ describe("CreateVisitDialog", () => {
     );
     expect(mockCreateVisit).not.toHaveBeenCalled();
     expect(onVisitCreated).not.toHaveBeenCalled();
+  });
+
+  it("clears previous state when the dialog is reopened after creating a visit", async () => {
+    mockGetEventForms.mockResolvedValue([sampleForm]);
+    mockCreateVisit.mockResolvedValue({ success: true, id: "new-visit-id" });
+    mockCreateEvent.mockResolvedValue({ success: true, id: "new-event-id" });
+    render(<CreateVisitDialog {...defaultProps} />);
+
+    // First visit: select form, fill a field, submit
+    fireEvent.click(screen.getByRole("button", { name: /new visit/i }));
+    fireEvent.click(await screen.findByText(sampleForm.name));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    await screen.findByText("Complete the form for this visit.");
+    const complaint = screen.getByLabelText(/chief complaint/i);
+    fireEvent.change(complaint, { target: { value: "ear pain" } });
+    fireEvent.click(screen.getByRole("button", { name: /^create visit$/i }));
+    await waitFor(() =>
+      expect(mockToast.success).toHaveBeenCalledWith("Visit created"),
+    );
+
+    // Second visit: state from the first must be gone
+    fireEvent.click(screen.getByRole("button", { name: /new visit/i }));
+    await screen.findByText("Record a new visit for this patient.");
+    // No form preselected — the submit button reads "Create Visit", not "Continue"
+    expect(
+      screen.getByRole("button", { name: /^create visit$/i }),
+    ).toBeDefined();
+    // Step 2 field values are cleared
+    fireEvent.click(screen.getByText(sampleForm.name));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    const complaintSecondVisit = await screen.findByLabelText(
+      /chief complaint/i,
+    );
+    expect(complaintSecondVisit).toHaveProperty("value", "");
   });
 });

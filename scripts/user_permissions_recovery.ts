@@ -81,10 +81,7 @@ async function fixUserRoles(db: Kysely<Database>): Promise<void> {
 
   for (const user of users) {
     if (!isValidRole(user.role)) {
-      // User has no role or invalid role - assign default role
-      console.log(
-        `User ${user.email} (${user.name}) has invalid role "${user.role}" - ${isDryRun ? "would assign" : "assigning"} "${DEFAULT_ROLE}"`,
-      );
+      // User has no role or invalid role - assign default role    
 
       if (!isDryRun) {
         await db
@@ -163,10 +160,7 @@ async function fixClinicPermissions(db: Kysely<Database>): Promise<void> {
       if (!existingClinicIds.has(clinic.id)) {
         // Missing permission entry
         if (isPrimaryClinic) {
-          // For primary clinic: create with role defaults
-          console.log(
-            `${isDryRun ? "Would create" : "Creating"} permissions for user ${user.email} (${userRole}) in their primary clinic ${clinic.name || clinic.id}`,
-          );
+          // For primary clinic: create with role defaults         
 
           if (isDryRun) {
             console.log(
@@ -175,10 +169,6 @@ async function fixClinicPermissions(db: Kysely<Database>): Promise<void> {
           }
         } else {
           // For non-primary clinic: create with all false permissions
-          console.log(
-            `${isDryRun ? "Would create" : "Creating"} no-access permissions for user ${user.email} in non-primary clinic ${clinic.name || clinic.id}`,
-          );
-
           if (isDryRun) {
             console.log(
               `Permissions: register=false, view=false, edit=false, delete=false, admin=false`,
@@ -217,7 +207,7 @@ async function fixClinicPermissions(db: Kysely<Database>): Promise<void> {
           } catch (error) {
             // Handle potential race conditions or constraint violations
             console.error(
-              `Failed to create permissions for user ${user.email} in clinic ${clinic.name}: ${error}`,
+              `Failed to create permissions for user ${user.email} : ${error}`,
             );
           }
         }
@@ -256,6 +246,9 @@ export async function runRecovery(): Promise<void> {
     // THERE is no need to clean up orphaned permissions. Hikma Health is a no delete system. only soft-deletes are allowed.
     // Therefore, all permissions without valid users or clinics will be kept as is.
 
+    // Must run before this function's finally block destroys the connection.
+    await purgeExpiredTokens();
+
     console.log("=".repeat(50));
     console.log(
       `✅ User Permissions Recovery ${isDryRun ? "simulation" : ""} completed successfully!`,
@@ -272,6 +265,18 @@ export async function runRecovery(): Promise<void> {
   } finally {
     await db.destroy();
   }
+}
+
+// Expired session tokens accumulate forever otherwise; the recovery script
+// runs on every server boot (pnpm start), so this is a natural sweep point.
+async function purgeExpiredTokens(): Promise<void> {
+  const result = await db
+    .deleteFrom("tokens")
+    .where("expiry", "<=", new Date())
+    .executeTakeFirst();
+  console.log(
+    `[purge] expired tokens removed: ${Number(result.numDeletedRows ?? 0)}`,
+  );
 }
 
 // Run the script if executed directly

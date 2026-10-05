@@ -1,215 +1,226 @@
-import { createServerFn } from "@tanstack/react-start";
+import db from "@/db";
+import { permissionsMiddleware } from "@/middleware/auth";
 import Patient from "@/models/patient";
-import { userRoleTokenHasCapability } from "../auth/request";
+import PatientAdditionalAttribute from "@/models/patient-additional-attribute";
 import User from "@/models/user";
 import * as Sentry from "@sentry/tanstackstart-react";
-import z from "zod";
-import { permissionsMiddleware } from "@/middleware/auth";
-import db from "@/db";
+import { createServerFn } from "@tanstack/react-start";
 import { sql } from "kysely";
-import PatientAdditionalAttribute from "@/models/patient-additional-attribute";
-import {
-  type CreatePatientInput,
-  type UpdatePatientInput,
-  buildPatientInsertValues,
-  buildPatientAttributeInsertValues,
-} from "./builders";
+import z from "zod";
+import { userRoleTokenHasCapability } from "../auth/request";
 import { logAuditEvent } from "./audit";
+import {
+	type CreatePatientInput,
+	type UpdatePatientInput,
+	buildPatientAttributeInsertValues,
+	buildPatientInsertValues,
+} from "./builders";
 
 type Pagination = {
-  offset: number;
-  limit: number;
-  total: number;
-  hasMore: boolean;
+	offset: number;
+	limit: number;
+	total: number;
+	hasMore: boolean;
 };
 
 export const getAllPatients = createServerFn({
-  method: "GET",
+	method: "GET",
 })
-  .inputValidator((data?: { offset?: number; limit?: number }) => data || {})
-  .handler(
-    async ({
-      data,
-    }): Promise<{
-      patients: (typeof Patient.PatientWithAttributesSchema.Encoded)[];
-      pagination: Pagination;
-      error: { message: string } | null;
-    }> => {
-      return Sentry.startSpan({ name: "getAllPatients" }, async () => {
-        const authorized = await userRoleTokenHasCapability([
-          User.CAPABILITIES.READ_ALL_PATIENT,
-        ]);
+	.inputValidator((data?: { offset?: number; limit?: number }) => data || {})
+	.handler(
+		async ({
+			data,
+		}): Promise<{
+			patients: (typeof Patient.PatientWithAttributesSchema.Encoded)[];
+			pagination: Pagination;
+			error: { message: string } | null;
+		}> => {
+			return Sentry.startSpan({ name: "getAllPatients" }, async () => {
+				const authorized = await userRoleTokenHasCapability([
+					User.CAPABILITIES.READ_ALL_PATIENT,
+				]);
 
-        if (!authorized) {
-          return {
-            patients: [],
-            pagination: {
-              offset: 0,
-              limit: 50,
-              total: 0,
-              hasMore: false,
-            },
-            error: {
-              message: "Unauthorized: Insufficient permissions",
-              source: "getAllPatients",
-            },
-          };
-        }
-        const { patients, pagination } = await Patient.API.getAllWithAttributes(
-          {
-            limit: data?.limit || 50,
-            offset: data?.offset || 0,
-            includeCount: true,
-          },
-        );
-        return { patients: patients, pagination, error: null };
-      });
-    },
-  );
+				if (!authorized) {
+					return {
+						patients: [],
+						pagination: {
+							offset: 0,
+							limit: 50,
+							total: 0,
+							hasMore: false,
+						},
+						error: {
+							message: "Unauthorized: Insufficient permissions",
+							source: "getAllPatients",
+						},
+					};
+				}
+				const { patients, pagination } = await Patient.API.getAllWithAttributes(
+					{
+						limit: data?.limit || 50,
+						offset: data?.offset || 0,
+						includeCount: true,
+					},
+				);
+				return { patients: patients, pagination, error: null };
+			});
+		},
+	);
 
 // Search patients with text query and optional date filters
 export const searchPatients = createServerFn({ method: "GET" })
-  .inputValidator(
-    (data: {
-      searchQuery: string;
-      offset?: number;
-      limit?: number;
-      registrationDateStart?: string;
-      registrationDateEnd?: string;
-      visitsDateStart?: string;
-      visitsDateEnd?: string;
-      clinicIds?: string[];
-    }) => data,
-  )
-  .handler(
-    async ({
-      data,
-    }): Promise<{
-      patients: (typeof Patient.PatientWithAttributesSchema.Encoded)[];
-      pagination: Pagination;
-      error: { message: string } | null;
-    }> => {
-      return Sentry.startSpan({ name: "searchPatients" }, async () => {
-        const authorized = await userRoleTokenHasCapability([
-          User.CAPABILITIES.READ_ALL_PATIENT,
-        ]);
+	.inputValidator(
+		(data: {
+			searchQuery: string;
+			offset?: number;
+			limit?: number;
+			registrationDateStart?: string;
+			registrationDateEnd?: string;
+			visitsDateStart?: string;
+			visitsDateEnd?: string;
+			clinicIds?: string[];
+		}) => data,
+	)
+	.handler(
+		async ({
+			data,
+		}): Promise<{
+			patients: (typeof Patient.PatientWithAttributesSchema.Encoded)[];
+			pagination: Pagination;
+			error: { message: string } | null;
+		}> => {
+			return Sentry.startSpan({ name: "searchPatients" }, async () => {
+				const authorized = await userRoleTokenHasCapability([
+					User.CAPABILITIES.READ_ALL_PATIENT,
+				]);
 
-        if (!authorized) {
-          return {
-            patients: [],
-            pagination: {
-              offset: 0,
-              limit: data.limit || 10,
-              total: 0,
-              hasMore: false,
-            },
-            error: {
-              message: "Unauthorized: Insufficient permissions",
-              source: "searchPatients",
-            },
-          };
-        }
+				if (!authorized) {
+					return {
+						patients: [],
+						pagination: {
+							offset: 0,
+							limit: data.limit || 10,
+							total: 0,
+							hasMore: false,
+						},
+						error: {
+							message: "Unauthorized: Insufficient permissions",
+							source: "searchPatients",
+						},
+					};
+				}
 
-        const offset = data.offset || 0;
-        const limit = data.limit || 10;
+				const offset = data.offset || 0;
+				const limit = data.limit || 10;
 
-        const hasTextQuery =
-          data.searchQuery && data.searchQuery.trim() !== "";
-        const hasDateFilters =
-          data.registrationDateStart ||
-          data.registrationDateEnd ||
-          data.visitsDateStart ||
-          data.visitsDateEnd;
-        const hasClinicFilter =
-          data.clinicIds && data.clinicIds.length > 0;
+				const hasTextQuery = data.searchQuery && data.searchQuery.trim() !== "";
+				const hasDateFilters =
+					data.registrationDateStart ||
+					data.registrationDateEnd ||
+					data.visitsDateStart ||
+					data.visitsDateEnd;
+				const hasClinicFilter = data.clinicIds && data.clinicIds.length > 0;
 
-        // If no filters at all, use getAllWithAttributes for better performance
-        if (!hasTextQuery && !hasDateFilters && !hasClinicFilter) {
-          const result = await Patient.API.getAllWithAttributes({
-            offset,
-            limit,
-            includeCount: true,
-          });
-          return {
-            patients: result.patients,
-            pagination: result.pagination,
-            error: null,
-          };
-        }
+				// If no filters at all, use getAllWithAttributes for better performance
+				if (!hasTextQuery && !hasDateFilters && !hasClinicFilter) {
+					const result = await Patient.API.getAllWithAttributes({
+						offset,
+						limit,
+						includeCount: true,
+					});
+					return {
+						patients: result.patients,
+						pagination: result.pagination,
+						error: null,
+					};
+				}
 
-        const result = await Patient.API.search({
-          searchQuery: data.searchQuery,
-          offset,
-          limit,
-          includeCount: true,
-          registrationDateStart: data.registrationDateStart,
-          registrationDateEnd: data.registrationDateEnd,
-          visitsDateStart: data.visitsDateStart,
-          visitsDateEnd: data.visitsDateEnd,
-          clinicIds: data.clinicIds,
-        });
+				const result = await Patient.API.search({
+					searchQuery: data.searchQuery,
+					offset,
+					limit,
+					includeCount: true,
+					registrationDateStart: data.registrationDateStart,
+					registrationDateEnd: data.registrationDateEnd,
+					visitsDateStart: data.visitsDateStart,
+					visitsDateEnd: data.visitsDateEnd,
+					clinicIds: data.clinicIds,
+				});
 
-        return {
-          patients: result.patients,
-          pagination: result.pagination,
-          error: null,
-        };
-      });
-    },
-  );
+				return {
+					patients: result.patients,
+					pagination: result.pagination,
+					error: null,
+				};
+			});
+		},
+	);
 
 export const getPatientById = createServerFn({
-  method: "GET",
+	method: "GET",
 })
-  .inputValidator((data: { id: string }) => data)
-  .handler(
-    async ({
-      data,
-    }): Promise<{
-      patient: Patient.EncodedT;
-      error: { message: string } | null;
-    }> => {
-      const patient = await Patient.API.getById(data.id);
+	.inputValidator((data: { id: string }) => data)
+	.handler(
+		async ({
+			data,
+		}): Promise<{
+			patient: Patient.EncodedT;
+			error: { message: string } | null;
+		}> => {
+			const authorized = await userRoleTokenHasCapability([
+				User.CAPABILITIES.READ_ALL_PATIENT,
+			]);
 
-      return {
-        patient,
-        error: null,
-      };
-    },
-  );
+			if (!authorized) {
+				return {
+					patient: null as unknown as Patient.EncodedT,
+					error: {
+						message: "Unauthorized: Insufficient permissions",
+					},
+				};
+			}
+
+			const patient = await Patient.API.getById(data.id);
+
+			return {
+				patient,
+				error: null,
+			};
+		},
+	);
 
 /**
  * Soft delete a list of patients by their IDs.
  */
 export const softDeletePatientsByIds = createServerFn({
-  method: "POST",
+	method: "POST",
 })
-  .inputValidator((data: { ids: string[] }) => data)
-  .middleware([permissionsMiddleware])
-  .handler(
-    async ({
-      data,
-      context,
-    }): Promise<{
-      success: boolean;
-      error: { message: string } | null;
-    }> => {
-      if (!context.userId || context.role !== User.ROLES.SUPER_ADMIN) {
-        return Promise.reject({
-          message: "Unauthorized: Insufficient permissions.",
-          source: "softDeletePatientsByIds",
-        });
-      }
+	.inputValidator((data: { ids: string[] }) => data)
+	.middleware([permissionsMiddleware])
+	.handler(
+		async ({
+			data,
+			context,
+		}): Promise<{
+			success: boolean;
+			error: { message: string } | null;
+		}> => {
+			if (!context.userId || context.role !== User.ROLES.SUPER_ADMIN) {
+				return Promise.reject({
+					message: "Unauthorized: Insufficient permissions.",
+					source: "softDeletePatientsByIds",
+				});
+			}
 
-      // Soft delete each patient by ID
-      await Patient.API.softDelete(data.ids);
+			// Soft delete each patient by ID
+			await Patient.API.softDelete(data.ids);
 
-      return {
-        success: true,
-        error: null,
-      };
-    },
-  );
+			return {
+				success: true,
+				error: null,
+			};
+		},
+	);
 
 /**
  * Create a new patient with optional additional attributes in an atomic transaction.
@@ -217,116 +228,124 @@ export const softDeletePatientsByIds = createServerFn({
  * @returns The new patient ID on success
  */
 export const createPatient = createServerFn({ method: "POST" })
-  .inputValidator((data: CreatePatientInput) => data)
-  .middleware([permissionsMiddleware])
-  .handler(
-    async ({
-      data,
-      context,
-    }): Promise<
-      { success: true; id: string } | { success: false; error: string }
-    > => {
-      if (!context.userId) {
-        return Promise.reject({
-          message: "Unauthorized",
-          source: "createPatient",
-        });
-      }
+	.inputValidator((data: CreatePatientInput) => data)
+	.middleware([permissionsMiddleware])
+	.handler(
+		async ({
+			data,
+			context,
+		}): Promise<
+			{ success: true; id: string } | { success: false; error: string }
+		> => {
+			if (!context.userId) {
+				return Promise.reject({
+					message: "Unauthorized",
+					source: "createPatient",
+				});
+			}
 
-      return Sentry.startSpan({ name: "createPatient" }, async () => {
-        try {
-          const values = buildPatientInsertValues(data.patient);
-          const patientId = values.id;
+			const authorized = await userRoleTokenHasCapability([
+				User.CAPABILITIES.CREATE_PATIENT,
+			]);
 
-          await db.transaction().execute(async (trx) => {
-            await trx
-              .insertInto(Patient.Table.name)
-              .values({
-                id: values.id,
-                given_name: values.given_name,
-                surname: values.surname,
-                date_of_birth: values.date_of_birth
-                  ? sql`${values.date_of_birth}::date`
-                  : null,
-                citizenship: values.citizenship,
-                hometown: values.hometown,
-                phone: values.phone,
-                sex: values.sex,
-                camp: values.camp,
-                additional_data: sql`${JSON.stringify(values.additional_data)}::jsonb`,
-                metadata: sql`${JSON.stringify(values.metadata)}::jsonb`,
-                photo_url: values.photo_url,
-                government_id: values.government_id,
-                external_patient_id: values.external_patient_id,
-                primary_clinic_id: values.primary_clinic_id,
-                last_modified_by: context.userId,
-                is_deleted: false,
-                created_at: sql`now()::timestamp with time zone`,
-                updated_at: sql`now()::timestamp with time zone`,
-                last_modified: sql`now()::timestamp with time zone`,
-                server_created_at: sql`now()::timestamp with time zone`,
-                deleted_at: null,
-              })
-              .executeTakeFirstOrThrow();
+			if (!authorized) {
+				return { success: false as const, error: "Insufficient permissions" };
+			}
 
-            const attrs = data.additionalAttributes ?? [];
-            if (attrs.length > 0) {
-              const attrValues = buildPatientAttributeInsertValues(
-                patientId,
-                attrs,
-              );
-              for (const attr of attrValues) {
-                await trx
-                  .insertInto(PatientAdditionalAttribute.Table.name)
-                  .values({
-                    id: attr.id,
-                    patient_id: attr.patient_id,
-                    attribute_id: attr.attribute_id,
-                    attribute: attr.attribute,
-                    number_value: attr.number_value,
-                    string_value: attr.string_value,
-                    date_value: attr.date_value
-                      ? sql`${attr.date_value}::timestamp with time zone`
-                      : null,
-                    boolean_value: attr.boolean_value,
-                    metadata: sql`${JSON.stringify(attr.metadata)}::jsonb`,
-                    is_deleted: false,
-                    created_at: sql`now()::timestamp with time zone`,
-                    updated_at: sql`now()::timestamp with time zone`,
-                    last_modified: sql`now()::timestamp with time zone`,
-                    server_created_at: sql`now()::timestamp with time zone`,
-                    deleted_at: null,
-                  })
-                  .executeTakeFirst();
-              }
-            }
-          });
+			return Sentry.startSpan({ name: "createPatient" }, async () => {
+				try {
+					const values = buildPatientInsertValues(data.patient);
+					const patientId = values.id;
 
-          await logAuditEvent({
-            actionType: "CREATE",
-            tableName: "patients",
-            rowId: patientId,
-            changes: {
-              ...data.patient,
-              additionalAttributes: data.additionalAttributes ?? [],
-            },
-            userId: context.userId,
-          });
+					await db.transaction().execute(async (trx) => {
+						await trx
+							.insertInto(Patient.Table.name)
+							.values({
+								id: values.id,
+								given_name: values.given_name,
+								surname: values.surname,
+								date_of_birth: values.date_of_birth
+									? sql`${values.date_of_birth}::date`
+									: null,
+								citizenship: values.citizenship,
+								hometown: values.hometown,
+								phone: values.phone,
+								sex: values.sex,
+								camp: values.camp,
+								additional_data: sql`${JSON.stringify(values.additional_data)}::jsonb`,
+								metadata: sql`${JSON.stringify(values.metadata)}::jsonb`,
+								photo_url: values.photo_url,
+								government_id: values.government_id,
+								external_patient_id: values.external_patient_id,
+								primary_clinic_id: values.primary_clinic_id,
+								last_modified_by: context.userId,
+								is_deleted: false,
+								created_at: sql`now()::timestamp with time zone`,
+								updated_at: sql`now()::timestamp with time zone`,
+								last_modified: sql`now()::timestamp with time zone`,
+								server_created_at: sql`now()::timestamp with time zone`,
+								deleted_at: null,
+							})
+							.executeTakeFirstOrThrow();
 
-          return { success: true as const, id: patientId };
-        } catch (error) {
-          Sentry.captureException(error);
-          return {
-            success: false as const,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Failed to create patient",
-          };
-        }
-      });
-    },
-  );
+						const attrs = data.additionalAttributes ?? [];
+						if (attrs.length > 0) {
+							const attrValues = buildPatientAttributeInsertValues(
+								patientId,
+								attrs,
+							);
+							for (const attr of attrValues) {
+								await trx
+									.insertInto(PatientAdditionalAttribute.Table.name)
+									.values({
+										id: attr.id,
+										patient_id: attr.patient_id,
+										attribute_id: attr.attribute_id,
+										attribute: attr.attribute,
+										number_value: attr.number_value,
+										string_value: attr.string_value,
+										date_value: attr.date_value
+											? sql`${attr.date_value}::timestamp with time zone`
+											: null,
+										boolean_value: attr.boolean_value,
+										metadata: sql`${JSON.stringify(attr.metadata)}::jsonb`,
+										is_deleted: false,
+										created_at: sql`now()::timestamp with time zone`,
+										updated_at: sql`now()::timestamp with time zone`,
+										last_modified: sql`now()::timestamp with time zone`,
+										server_created_at: sql`now()::timestamp with time zone`,
+										deleted_at: null,
+									})
+									.executeTakeFirst();
+							}
+						}
+					});
+
+					await logAuditEvent({
+						actionType: "CREATE",
+						tableName: "patients",
+						rowId: patientId,
+						changes: {
+							...data.patient,
+							additionalAttributes: data.additionalAttributes ?? [],
+						},
+						userId: context.userId,
+					});
+
+					return { success: true as const, id: patientId };
+				} catch (error) {
+					Sentry.captureException(error);
+					return {
+						success: false as const,
+						error:
+							error instanceof Error
+								? error.message
+								: "Failed to create patient",
+					};
+				}
+			});
+		},
+	);
 
 /**
  * Update an existing patient's fields. Only provided fields are updated.
@@ -334,85 +353,93 @@ export const createPatient = createServerFn({ method: "POST" })
  * @returns Success status
  */
 export const updatePatient = createServerFn({ method: "POST" })
-  .inputValidator((data: UpdatePatientInput) => data)
-  .middleware([permissionsMiddleware])
-  .handler(
-    async ({
-      data,
-      context,
-    }): Promise<{ success: true } | { success: false; error: string }> => {
-      if (!context.userId) {
-        return Promise.reject({
-          message: "Unauthorized",
-          source: "updatePatient",
-        });
-      }
+	.inputValidator((data: UpdatePatientInput) => data)
+	.middleware([permissionsMiddleware])
+	.handler(
+		async ({
+			data,
+			context,
+		}): Promise<{ success: true } | { success: false; error: string }> => {
+			if (!context.userId) {
+				return Promise.reject({
+					message: "Unauthorized",
+					source: "updatePatient",
+				});
+			}
 
-      return Sentry.startSpan({ name: "updatePatient" }, async () => {
-        try {
-          const updateSet: Record<string, any> = {};
-          const { fields } = data;
+			const authorized = await userRoleTokenHasCapability([
+				User.CAPABILITIES.UPDATE_PATIENT,
+			]);
 
-          // Build update set from provided fields
-          if (fields.given_name !== undefined)
-            updateSet.given_name = fields.given_name;
-          if (fields.surname !== undefined) updateSet.surname = fields.surname;
-          if (fields.date_of_birth !== undefined) {
-            updateSet.date_of_birth = fields.date_of_birth
-              ? sql`${fields.date_of_birth}::date`
-              : null;
-          }
-          if (fields.sex !== undefined) updateSet.sex = fields.sex;
-          if (fields.citizenship !== undefined)
-            updateSet.citizenship = fields.citizenship;
-          if (fields.hometown !== undefined)
-            updateSet.hometown = fields.hometown;
-          if (fields.phone !== undefined) updateSet.phone = fields.phone;
-          if (fields.camp !== undefined) updateSet.camp = fields.camp;
-          if (fields.government_id !== undefined)
-            updateSet.government_id = fields.government_id;
-          if (fields.external_patient_id !== undefined)
-            updateSet.external_patient_id = fields.external_patient_id;
-          if (fields.additional_data !== undefined)
-            updateSet.additional_data = sql`${JSON.stringify(fields.additional_data)}::jsonb`;
-          if (fields.metadata !== undefined)
-            updateSet.metadata = sql`${JSON.stringify(fields.metadata)}::jsonb`;
-          if (fields.photo_url !== undefined)
-            updateSet.photo_url = fields.photo_url;
-          if (fields.primary_clinic_id !== undefined)
-            updateSet.primary_clinic_id = fields.primary_clinic_id;
+			if (!authorized) {
+				return { success: false as const, error: "Insufficient permissions" };
+			}
 
-          // Always update timestamps
-          updateSet.updated_at = sql`now()::timestamp with time zone`;
-          updateSet.last_modified = sql`now()::timestamp with time zone`;
-          updateSet.last_modified_by = context.userId;
+			return Sentry.startSpan({ name: "updatePatient" }, async () => {
+				try {
+					const updateSet: Record<string, any> = {};
+					const { fields } = data;
 
-          await db
-            .updateTable(Patient.Table.name)
-            .set(updateSet)
-            .where("id", "=", data.id)
-            .where("is_deleted", "=", false)
-            .execute();
+					// Build update set from provided fields
+					if (fields.given_name !== undefined)
+						updateSet.given_name = fields.given_name;
+					if (fields.surname !== undefined) updateSet.surname = fields.surname;
+					if (fields.date_of_birth !== undefined) {
+						updateSet.date_of_birth = fields.date_of_birth
+							? sql`${fields.date_of_birth}::date`
+							: null;
+					}
+					if (fields.sex !== undefined) updateSet.sex = fields.sex;
+					if (fields.citizenship !== undefined)
+						updateSet.citizenship = fields.citizenship;
+					if (fields.hometown !== undefined)
+						updateSet.hometown = fields.hometown;
+					if (fields.phone !== undefined) updateSet.phone = fields.phone;
+					if (fields.camp !== undefined) updateSet.camp = fields.camp;
+					if (fields.government_id !== undefined)
+						updateSet.government_id = fields.government_id;
+					if (fields.external_patient_id !== undefined)
+						updateSet.external_patient_id = fields.external_patient_id;
+					if (fields.additional_data !== undefined)
+						updateSet.additional_data = sql`${JSON.stringify(fields.additional_data)}::jsonb`;
+					if (fields.metadata !== undefined)
+						updateSet.metadata = sql`${JSON.stringify(fields.metadata)}::jsonb`;
+					if (fields.photo_url !== undefined)
+						updateSet.photo_url = fields.photo_url;
+					if (fields.primary_clinic_id !== undefined)
+						updateSet.primary_clinic_id = fields.primary_clinic_id;
 
-          await logAuditEvent({
-            actionType: "UPDATE",
-            tableName: "patients",
-            rowId: data.id,
-            changes: data.fields,
-            userId: context.userId,
-          });
+					// Always update timestamps
+					updateSet.updated_at = sql`now()::timestamp with time zone`;
+					updateSet.last_modified = sql`now()::timestamp with time zone`;
+					updateSet.last_modified_by = context.userId;
 
-          return { success: true as const };
-        } catch (error) {
-          Sentry.captureException(error);
-          return {
-            success: false as const,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Failed to update patient",
-          };
-        }
-      });
-    },
-  );
+					await db
+						.updateTable(Patient.Table.name)
+						.set(updateSet)
+						.where("id", "=", data.id)
+						.where("is_deleted", "=", false)
+						.execute();
+
+					await logAuditEvent({
+						actionType: "UPDATE",
+						tableName: "patients",
+						rowId: data.id,
+						changes: data.fields,
+						userId: context.userId,
+					});
+
+					return { success: true as const };
+				} catch (error) {
+					Sentry.captureException(error);
+					return {
+						success: false as const,
+						error:
+							error instanceof Error
+								? error.message
+								: "Failed to update patient",
+					};
+				}
+			});
+		},
+	);

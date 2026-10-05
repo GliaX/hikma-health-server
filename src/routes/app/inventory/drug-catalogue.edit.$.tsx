@@ -59,8 +59,6 @@ export const Route = createFileRoute("/app/inventory/drug-catalogue/edit/$")({
       currentUser: null,
     };
 
-    console.log("drugId", drugId);
-
     if (drugId && typeof drugId === "string" && drugId !== "new") {
       const drugData = await getDrugById({ data: { id: drugId } });
       result.drug = drugData || null;

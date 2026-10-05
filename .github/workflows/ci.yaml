@@ -11,7 +11,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -59,8 +59,14 @@ jobs:
       - name: Verify build
         run: pnpm build
 
-      - name: Merge to main on success
-        if: success() && github.event_name == 'push'
+  merge-to-main:
+    needs: build
+    if: success() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Merge dev to main
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

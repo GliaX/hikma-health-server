@@ -427,7 +427,8 @@ namespace Prescription {
               console.info(
                 `[sync] Skipped stale upsert for prescription ${prescriptionId}`,
               );
-              return { numInsertedOrUpdatedRows: BigInt(0) };
+              
+              return { success: true, stale: true, id: prescriptionId };
             }
 
             if (prescription_items.length > 0) {
@@ -452,7 +453,7 @@ namespace Prescription {
                 .executeTakeFirstOrThrow();
             }
 
-            return res;
+            return { success: true, stale: false, id: prescriptionId };
           });
         } catch (error) {
           console.error("Prescription save operation failed:", {

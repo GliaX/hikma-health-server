@@ -167,8 +167,6 @@ function RouteComponent() {
     }
   }, [batchNumber, existingBatches]);
 
-  console.log({ existingBatches });
-
   const handleDrugSelect = async (drug: DrugCatalogue.ApiDrug | null) => {
     setSelectedDrug(drug);
     if (drug) {
@@ -402,7 +400,6 @@ function RouteComponent() {
                               // value={value}
                               onChange={(field) => {
                                 if (field?.value) {
-                                  console.log({ value });
                                   onChange(field.value.trim());
                                 } else {
                                   onChange("");

@@ -3,14 +3,30 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { authedProcedure, publicProcedure, createTRPCRouter } from "../../init";
+import {
+  authedProcedure,
+  publicProcedure,
+  createTRPCRouter,
+} from "../../init";
+import User from "@/models/user";
+
+/** Guard: only admin or super_admin may view draft/private education content. */
+function requireAdmin(role: string): void {
+  if (role !== User.ROLES.ADMIN && role !== User.ROLES.SUPER_ADMIN) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only admins can view education content management data",
+    });
+  }
+}
 import db from "@/db";
 import { sql } from "kysely";
 import * as Sentry from "@sentry/tanstackstart-react";
 
 export const educationQueryRouter = createTRPCRouter({
   /** List all education content for admin dashboard (authed). */
-  list: authedProcedure.query(async () => {
+  list: authedProcedure.query(async ({ ctx }) => {
+    requireAdmin(ctx.role);
     try {
       return await db
         .selectFrom("education_content")
@@ -30,8 +46,9 @@ export const educationQueryRouter = createTRPCRouter({
   /** Get a single content item by ID (authed, for editing). */
   get: authedProcedure
     .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
+        requireAdmin(ctx.role);
         const row = await db
           .selectFrom("education_content")
           .selectAll()

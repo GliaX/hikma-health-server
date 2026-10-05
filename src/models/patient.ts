@@ -416,7 +416,7 @@ namespace Patient {
    * Build the base SQL query for retrieving patients with their additional attributes
    * @returns SQL query template
    */
-  const buildPatientAttributesBaseQuery = (clinicIds: string[]) => sql`
+  const buildPatientAttributesBaseQuery = (clinicIds: string[] | null) => sql`
     SELECT
       p.*,
       COALESCE(json_object_agg(
@@ -432,7 +432,7 @@ namespace Patient {
     FROM patients p
     LEFT JOIN patient_additional_attributes pa ON p.id = pa.patient_id
     WHERE p.is_deleted = false
-    AND (${clinicIds.length > 0 ? sql`p.primary_clinic_id IN (${sql.join(clinicIds)})  OR p.primary_clinic_id IS NULL` : sql`p.primary_clinic_id IS NULL`})
+    AND (${clinicIds === null ? sql`1=1` : clinicIds.length > 0 ? sql`p.primary_clinic_id IN (${sql.join(clinicIds)})  OR p.primary_clinic_id IS NULL` : sql`p.primary_clinic_id IS NULL`})
   `;
 
   /**
@@ -582,18 +582,23 @@ namespace Patient {
         limit?: number;
         offset?: number;
         includeCount?: boolean;
+        /** Explicit clinic scope. Null = unrestricted; undefined = derive
+         * from the request cookie (web session) as before. */
+        clinicIdsOverride?: string[] | null;
       }): Promise<PatientsQueryResult> => {
         const { limit, offset = 0, includeCount = false } = options || {};
 
         // permissions check
         const clinicIds =
-          await UserClinicPermissions.API.getClinicIdsWithPermissionFromToken(
-            "can_view_history",
-          );
+          options?.clinicIdsOverride !== undefined
+            ? options.clinicIdsOverride
+            : await UserClinicPermissions.API.getClinicIdsWithPermissionFromToken(
+                  "can_view_history",
+                );
 
         // Build the query using the base query and adding pagination
         const query = sql`
-        ${buildPatientAttributesBaseQuery(clinicIds)}
+        ${buildPatientAttributesBaseQuery(clinicIds ?? null)}
         GROUP BY p.id
         ORDER BY p.updated_at DESC
         ${offset ? sql`OFFSET ${offset}` : sql``}
@@ -610,6 +615,7 @@ namespace Patient {
           SELECT COUNT(*) as total
           FROM patients
           WHERE is_deleted = false
+          ${clinicIds === null ? sql`` : sql`AND (${clinicIds.length > 0 ? sql`primary_clinic_id IN (${sql.join(clinicIds)}) OR primary_clinic_id IS NULL` : sql`primary_clinic_id IS NULL`})`}
         `.compile(db);
 
           const countResult = await db.executeQuery<{ total: number }>(
