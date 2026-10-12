@@ -23,6 +23,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import db from "@/db";
 import Clinic from "@/models/clinic";
+import {
+  permissionsMiddleware,
+  superAdminMiddleware,
+} from "@/middleware/auth";
 
 // Define the form schema
 const formSchema = z.object({
@@ -35,7 +39,12 @@ type FormValues = z.infer<typeof formSchema>;
 // Server function to get a clinic by ID
 const getClinicById = createServerFn({ method: "GET" })
   .inputValidator((data: { id: string }) => data)
-  .handler(async ({ data }) => {
+  .middleware([permissionsMiddleware])
+  .handler(async ({ data, context }) => {
+    if (!context.userId) {
+      throw new Error("Unauthorized: no valid session");
+    }
+
     const clinic = await db
       .selectFrom("clinics")
       .where("id", "=", data.id)
@@ -49,6 +58,7 @@ const getClinicById = createServerFn({ method: "GET" })
 // Server function to create or update a clinic
 const saveClinic = createServerFn({ method: "POST" })
   .inputValidator((data: { id?: string; name: string }) => data)
+  .middleware([superAdminMiddleware])
   .handler(async ({ data }) => {
     return await Clinic.save({ id: data.id, name: data.name });
   });

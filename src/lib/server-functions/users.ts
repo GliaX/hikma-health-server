@@ -5,16 +5,33 @@ import UserClinicPermissions from "@/models/user-clinic-permissions";
 import { getCookie } from "@tanstack/react-start/server";
 import Token from "@/models/token";
 import { Option } from "effect";
+import { userRoleTokenHasCapability } from "@/lib/auth/request";
 // import Patient from "@/models/patient";
 
 /**
- * Retrieves all users from the database
- * @returns Promise containing array of encoded user objects
+ * Pure handler for getAllUsers, exported so it can be unit-tested without the
+ * TanStack Start server-function wrapper (which short-circuits direct calls
+ * outside a request context). Gates on READ_USER capability and strips
+ * password hashes — list views never need them, and exposing bcrypt hashes
+ * turns this endpoint into a credential dump.
+ */
+export const getAllUsersHandler = async (): Promise<User.EncodedT[]> => {
+  const authorized = await userRoleTokenHasCapability([
+    User.CAPABILITIES.READ_USER,
+  ]);
+  if (!authorized) return [];
+
+  const users = await User.API.getAll();
+  return users.map((u) => ({ ...u, hashed_password: "" }));
+};
+
+/**
+ * Retrieves all users from the database. Gated by READ_USER (admin / provider /
+ * super_admin); unauthorized callers receive an empty list. Password hashes
+ * are stripped from every result.
  */
 export const getAllUsers = createServerFn({ method: "GET" }).handler(
-  async (): Promise<User.EncodedT[]> => {
-    return await User.API.getAll();
-  },
+  getAllUsersHandler,
 );
 
 /**

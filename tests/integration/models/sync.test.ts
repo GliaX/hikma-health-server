@@ -77,9 +77,14 @@ describe("Sync model (integration)", () => {
   it("delta query finds updated records", async () => {
     const id = await insertTestPatient();
 
-    // Record the time after creation
+    // Record the time after creation, from the DB clock rather than new Date():
+    // server_created_at and last_modified are stamped by the DB, so any skew
+    // between this machine and the DB server can put a local cutoff on the
+    // wrong side of either one.
     await new Promise((r) => setTimeout(r, 50));
-    const afterCreate = new Date();
+    const { db_now: afterCreate } = await testDb
+      .selectNoFrom(sql<Date>`clock_timestamp()`.as("db_now"))
+      .executeTakeFirstOrThrow();
     await new Promise((r) => setTimeout(r, 50));
 
     // Update the record

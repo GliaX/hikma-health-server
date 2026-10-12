@@ -24,15 +24,20 @@ import { toast } from "sonner";
 import { getAllClinics } from "@/lib/server-functions/clinics";
 import { Result } from "@/lib/result";
 import { Link } from "@tanstack/react-router";
+import { superAdminMiddleware } from "@/middleware/auth";
+import { isUserSuperAdmin } from "@/lib/auth/request";
+import If from "@/components/if";
 
 const deleteClinic = createServerFn({ method: "POST" })
   .inputValidator((data: { id: string }) => data)
+  .middleware([superAdminMiddleware])
   .handler(async ({ data }) => {
     return Clinic.softDelete(data.id);
   });
 
 export const archiveClinic = createServerFn({ method: "POST" })
   .inputValidator((data: { id: string; isArchived: boolean }) => data)
+  .middleware([superAdminMiddleware])
   .handler(async ({ data }) => {
     return Clinic.API.setArchivedStatus(data.id, data.isArchived);
   });
@@ -41,12 +46,14 @@ export const Route = createFileRoute("/app/clinics/")({
   component: RouteComponent,
   loader: async () => {
     const clinics = Result.getOrElse(await getAllClinics(), []);
-    return { clinics };
+    // UI-only gate; the server functions enforce super_admin independently.
+    const isSuperAdmin = await isUserSuperAdmin();
+    return { clinics, isSuperAdmin };
   },
 });
 
 function RouteComponent() {
-  const { clinics } = Route.useLoaderData();
+  const { clinics, isSuperAdmin } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
 
@@ -67,13 +74,13 @@ function RouteComponent() {
     }
 
     deleteClinic({ data: { id } })
-      .catch((error) => {
-        console.error(error);
-        toast.error(error.message);
-      })
       .then(() => {
         toast.success("Clinic deleted successfully");
         router.invalidate({ sync: true });
+      })
+      .catch((error) => {
+        console.error(error);
+        toast.error(error.message);
       });
   };
 
@@ -89,13 +96,13 @@ function RouteComponent() {
     }
 
     archiveClinic({ data: { id, isArchived: true } })
-      .catch((error) => {
-        console.error(error);
-        toast.error(error.message);
-      })
       .then(() => {
         toast.success("Clinic archived successfully");
         router.invalidate({ sync: true });
+      })
+      .catch((error) => {
+        console.error(error);
+        toast.error(error.message);
       });
   };
 
@@ -103,11 +110,13 @@ function RouteComponent() {
     <div className="container py-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Clinics</h1>
-        <Button asChild>
-          <Link to="/app/clinics/edit/$" params={{ _splat: "new" }}>
-            Add Clinic
-          </Link>
-        </Button>
+        <If show={isSuperAdmin}>
+          <Button asChild>
+            <Link to="/app/clinics/edit/$" params={{ _splat: "new" }}>
+              Add Clinic
+            </Link>
+          </Button>
+        </If>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -134,30 +143,32 @@ function RouteComponent() {
                     <LucideView className="mr-2" />
                     Open
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleEdit(clinic.id)}
-                  >
-                    <LucideEdit className="mr-2" />
-                    Edit
-                  </Button>
-                  {/* DELETE IS NOT ALLOWED */}
-                  {/*<Button
-                    variant="outline"
-                    className="text-red-500"
-                    onClick={() => handleDelete(clinic.id)}
-                  >
-                    <LucideTrash className="mr-2" />
-                    Delete
-                  </Button>*/}
-                  <Button
-                    variant="outline"
-                    className="text-red-500"
-                    onClick={() => handleArchive(clinic.id)}
-                  >
-                    <LucideArchive className="mr-2" />
-                    Archive
-                  </Button>
+                  <If show={isSuperAdmin}>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleEdit(clinic.id)}
+                    >
+                      <LucideEdit className="mr-2" />
+                      Edit
+                    </Button>
+                    {/* DELETE IS NOT ALLOWED */}
+                    {/*<Button
+                      variant="outline"
+                      className="text-red-500"
+                      onClick={() => handleDelete(clinic.id)}
+                    >
+                      <LucideTrash className="mr-2" />
+                      Delete
+                    </Button>*/}
+                    <Button
+                      variant="outline"
+                      className="text-red-500"
+                      onClick={() => handleArchive(clinic.id)}
+                    >
+                      <LucideArchive className="mr-2" />
+                      Archive
+                    </Button>
+                  </If>
                 </TableCell>
               </TableRow>
             ))}

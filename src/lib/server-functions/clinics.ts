@@ -4,14 +4,22 @@ import * as Sentry from "@sentry/tanstackstart-react";
 import ClinicDepartment from "@/models/clinic-department";
 import { permissionsMiddleware } from "@/middleware/auth";
 import UserClinicPermissions from "@/models/user-clinic-permissions";
-import { Result } from "@/lib/result";
+import { Result, type DataError } from "@/lib/result";
 
 /**
  * Get all clinics
  * @returns {Promise<Clinic.T[]>} - The list of clinics
  */
-export const getAllClinics = createServerFn({ method: "GET" }).handler(
-  async () => {
+export const getAllClinics = createServerFn({ method: "GET" })
+  .middleware([permissionsMiddleware])
+  .handler(async ({ context }) => {
+    if (!context.userId) {
+      return Result.err<DataError>({
+        _tag: "Unauthorized",
+        message: "Unauthorized: no valid session",
+      });
+    }
+
     return Sentry.startSpan({ name: "Get all clinics" }, async () => {
       try {
         const clinics = await Clinic.getAll();
@@ -25,14 +33,21 @@ export const getAllClinics = createServerFn({ method: "GET" }).handler(
         });
       }
     });
-  },
-);
+  });
 
 export const getClinicById = createServerFn({
   method: "GET",
 })
   .inputValidator((data: { id: string }) => data)
-  .handler(async ({ data }) => {
+  .middleware([permissionsMiddleware])
+  .handler(async ({ data, context }) => {
+    if (!context.userId) {
+      return Result.err<DataError>({
+        _tag: "Unauthorized",
+        message: "Unauthorized: no valid session",
+      });
+    }
+
     const clinicId = data.id;
     return await Sentry.startSpan({ name: "getClinicById" }, async () => {
       try {
@@ -66,7 +81,20 @@ export const createDepartment = createServerFn({ method: "POST" })
       can_perform_labs: boolean;
     }) => data,
   )
-  .handler(async ({ data }) => {
+  .middleware([permissionsMiddleware])
+  .handler(async ({ data, context }) => {
+    if (!context.userId) {
+      return Promise.reject({
+        message: "Unauthorized: Isufficient permissions",
+        source: "createDepartment",
+      });
+    }
+
+    await UserClinicPermissions.API.isAuthorizedWithClinic(
+      data.clinicId,
+      "is_clinic_admin",
+    );
+
     const departmentId = await ClinicDepartment.API.upsert({
       clinic_id: data.clinicId,
       name: data.name,

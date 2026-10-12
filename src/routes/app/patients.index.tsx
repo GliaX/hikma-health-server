@@ -135,16 +135,28 @@ const getFilteredPatientsForExport = createServerFn({ method: "GET" })
 
 export const Route = createFileRoute("/app/patients/")({
   component: RouteComponent,
-  loader: async () => {
-    const { patients, pagination, error } = await getAllPatients();
+  loader: async ({ location }) => {
+    // "View Patients" from the clinic detail page deep-links here with ?clinicId=<id>.
+    // When present, scope the initial fetch to that clinic so the page lands pre-filtered.
+    const urlClinicId =
+      (location.search as { clinicId?: string })?.clinicId ?? null;
+
+    const { patients, pagination } = urlClinicId
+      ? await searchPatients({
+          // Match getAllPatients()'s default page size (50) so the clinic-filtered
+          // landing page renders with the same UX as the unfiltered one.
+          data: { searchQuery: "", clinicIds: [urlClinicId], limit: 50 },
+        })
+      : await getAllPatients();
     const clinicsResult = await getAllClinics();
     const clinics = Result.isOk(clinicsResult) ? clinicsResult.data : [];
 
     return {
       currentUser: await getCurrentUser(),
-      patients: patients,
+      patients,
       pagination,
       clinics,
+      urlClinicId,
       patientRegistrationForm: await getPatientRegistrationForm(),
     };
   },
@@ -199,8 +211,14 @@ function searchReducer(draft: SearchState, action: SearchAction) {
 }
 
 function RouteComponent() {
-  const { currentUser, patients, pagination, patientRegistrationForm, clinics } =
-    Route.useLoaderData();
+  const {
+    currentUser,
+    patients,
+    pagination,
+    patientRegistrationForm,
+    clinics,
+    urlClinicId,
+  } = Route.useLoaderData();
 
   const [patientsList, setPatientsList] =
     React.useState<(typeof Patient.PatientWithAttributesSchema.Encoded)[]>(
@@ -221,7 +239,9 @@ function RouteComponent() {
   const [currentPage, setCurrentPage] = React.useState(1);
   const [searchState, dispatchSearchAction] = useImmerReducer(
     searchReducer,
-    initialSearchState,
+    urlClinicId
+      ? { ...initialSearchState, clinicIds: [urlClinicId] }
+      : initialSearchState,
   );
   const [loading, setLoading] = React.useState(false);
 

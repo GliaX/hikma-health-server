@@ -1,0 +1,13 @@
+allowBuilds:
+  '@biomejs/biome': true
+  '@sentry/cli': true
+  bcrypt: true
+  esbuild: true
+  lefthook: true
+
+# Security: pin seroval past GHSA-mv8w-475r-vwqw and GHSA-p6vx-979v-rg4c
+# (critical; both fixed in >=1.6.1). Pulled in transitively by
+# @tanstack/router-core, whose ^1.4.2 range already allows this version.
+overrides:
+  seroval: 1.6.7
+  seroval-plugins: 1.6.7

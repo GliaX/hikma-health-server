@@ -242,6 +242,17 @@ describe("Patient upsert (sync path)", () => {
   it("inserts then updates a patient via upsert", async () => {
     const patientId = await insertPatient({ given_name: "Original" });
 
+    // The upsert only applies when the incoming updated_at is newer than the
+    // stored one. The seed row is stamped by the DB clock (now()), so derive the
+    // incoming timestamp from that same value rather than the local clock —
+    // otherwise any skew between this machine and the DB server can make the
+    // "newer" record look older and the update is silently skipped.
+    const { newer_than_seed: newerThanSeed } = await testDb
+      .selectFrom("patients")
+      .select(sql<Date>`updated_at + interval '1 second'`.as("newer_than_seed"))
+      .where("id", "=", patientId)
+      .executeTakeFirstOrThrow();
+
     // Upsert with updated name — should update, not duplicate
     await Patient.API.DANGEROUS_SYNC_ONLY_upsert({
       id: patientId,
@@ -261,7 +272,7 @@ describe("Patient upsert (sync path)", () => {
       external_patient_id: null,
       is_deleted: false,
       created_at: new Date(),
-      updated_at: new Date(),
+      updated_at: newerThanSeed,
       last_modified: new Date(),
       server_created_at: new Date(),
       deleted_at: null,

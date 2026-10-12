@@ -177,8 +177,14 @@ describe("Sync.getDeltaRecords (integration)", () => {
 
     const patientId = await insertPatient();
 
+    // Take the cutoff from the DB clock, not Date.now(): server_created_at and
+    // last_modified are stamped by the DB, so any skew between this machine and
+    // the DB server can put a local cutoff on the wrong side of either one.
     await new Promise((r) => setTimeout(r, 50));
-    const afterCreate = Date.now();
+    const { db_now } = await testDb
+      .selectNoFrom(sql<Date>`clock_timestamp()`.as("db_now"))
+      .executeTakeFirstOrThrow();
+    const afterCreate = db_now.getTime();
     await new Promise((r) => setTimeout(r, 50));
 
     // Update the patient

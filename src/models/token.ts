@@ -9,8 +9,19 @@ import type {
 import db from "@/db";
 import User from "./user";
 import { createServerOnlyFn } from "@tanstack/react-start";
+import { createHash } from "crypto";
 
 namespace Token {
+  /**
+   * Tokens are stored as SHA-256 hashes so a leaked tokens table can't be
+   * replayed as live sessions. Callers always deal in the raw token; hashing
+   * happens only at the db boundary. Rows written before hashing was added
+   * hold raw tokens and will never match, which logs those sessions out.
+   */
+  export function hashToken(token: string): string {
+    return createHash("sha256").update(token).digest("hex");
+  }
+
   export type T = {
     user_id: string;
     token: string;
@@ -44,7 +55,7 @@ namespace Token {
     async (token: string): Promise<Option.Option<User.T>> => {
       let query = db.selectFrom(Table.name);
 
-      query = query.where("token", "=", token);
+      query = query.where("token", "=", hashToken(token));
       query = query.where("expiry", ">", new Date().toISOString());
 
       const res = await query.select(["user_id"]).executeTakeFirst();
@@ -74,7 +85,10 @@ namespace Token {
    */
   export const invalidate = createServerOnlyFn(
     async (token: string): Promise<void> => {
-      await db.deleteFrom(Table.name).where("token", "=", token).execute();
+      await db
+        .deleteFrom(Table.name)
+        .where("token", "=", hashToken(token))
+        .execute();
     },
   );
 
@@ -91,7 +105,7 @@ namespace Token {
         .insertInto(Token.Table.name)
         .values({
           user_id: userId,
-          token,
+          token: hashToken(token),
           expiry: expiry.toISOString(),
         })
         .execute();
