@@ -72,6 +72,7 @@ export const searchPatients = createServerFn({ method: "GET" })
 	.inputValidator(
 		(data: {
 			searchQuery: string;
+			searchGovernmentId?: string;
 			offset?: number;
 			limit?: number;
 			registrationDateStart?: string;
@@ -114,6 +115,8 @@ export const searchPatients = createServerFn({ method: "GET" })
 				const limit = data.limit || 10;
 
 				const hasTextQuery = data.searchQuery && data.searchQuery.trim() !== "";
+				const hasGovernmentIdFilter =
+					data.searchGovernmentId && data.searchGovernmentId.trim() !== "";
 				const hasDateFilters =
 					data.registrationDateStart ||
 					data.registrationDateEnd ||
@@ -122,7 +125,12 @@ export const searchPatients = createServerFn({ method: "GET" })
 				const hasClinicFilter = data.clinicIds && data.clinicIds.length > 0;
 
 				// If no filters at all, use getAllWithAttributes for better performance
-				if (!hasTextQuery && !hasDateFilters && !hasClinicFilter) {
+				if (
+					!hasTextQuery &&
+					!hasGovernmentIdFilter &&
+					!hasDateFilters &&
+					!hasClinicFilter
+				) {
 					const result = await Patient.API.getAllWithAttributes({
 						offset,
 						limit,
@@ -137,6 +145,7 @@ export const searchPatients = createServerFn({ method: "GET" })
 
 				const result = await Patient.API.search({
 					searchQuery: data.searchQuery,
+					searchGovernmentId: data.searchGovernmentId,
 					offset,
 					limit,
 					includeCount: true,
