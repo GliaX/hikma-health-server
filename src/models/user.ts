@@ -367,7 +367,7 @@ namespace User {
       password: string,
       validHours: number = 2,
     ): Promise<{ user: User.EncodedT; token: string }> => {
-      const user = await verifyCredentials(email, password);
+      const user = await verifyCredentials(email.trim().toLowerCase(), password);
 
       const token = await Token.create(
         user.id,
@@ -416,7 +416,7 @@ namespace User {
               id: userId,
               name: user.name,
               role: user.role,
-              email: user.email,
+              email: user.email.trim().toLowerCase(),
               hashed_password: hash,
               instance_url: user.instance_url,
               clinic_id: user.clinic_id,
@@ -536,7 +536,7 @@ namespace User {
           .set({
             name: user.name,
             role: user.role,
-            email: user.email,
+            email: user.email.trim().toLowerCase(),
             instance_url: user.instance_url,
             clinic_id: user.clinic_id,
             is_deleted: user.is_deleted,
