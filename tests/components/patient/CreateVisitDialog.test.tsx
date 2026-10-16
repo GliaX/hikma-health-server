@@ -149,8 +149,49 @@ describe("FormFieldEntry", () => {
     );
     const ta = container.querySelector("textarea") as HTMLTextAreaElement;
     expect(ta).not.toBeNull();
+    expect(ta.rows).toBe(3);
     fireEvent.change(ta, { target: { value: "long text" } });
     expect(onChange).toHaveBeenCalledWith("long text");
+  });
+
+  it("renders a textarea with a character limit, counter, and enforced maxLength", () => {
+    const onChange = vi.fn();
+    const field = {
+      id: "f1",
+      fieldType: "free-text",
+      inputType: "text",
+      length: "long",
+      charLimit: 100,
+      name: "Notes",
+      description: "",
+      required: false,
+    };
+    const { container } = render(
+      <FormFieldEntry field={field} value="abc" onChange={onChange} />,
+    );
+    const ta = container.querySelector("textarea") as HTMLTextAreaElement;
+    expect(ta).not.toBeNull();
+    expect(ta.maxLength).toBe(100);
+    const counter = container.querySelector("span.text-destructive");
+    expect(counter?.textContent).toBe("3/100");
+  });
+
+  it("does not render a counter for long fields without a character limit", () => {
+    const field = {
+      id: "f1",
+      fieldType: "free-text",
+      inputType: "text",
+      length: "long",
+      name: "Notes",
+      description: "",
+      required: false,
+    };
+    const { container } = render(
+      <FormFieldEntry field={field} value="" onChange={vi.fn()} />,
+    );
+    const ta = container.querySelector("textarea") as HTMLTextAreaElement;
+    expect(ta.maxLength).toBe(-1);
+    expect(container.querySelector("span.text-destructive")).toBeNull();
   });
 
   it("renders a date input for date fields and fires onChange", () => {

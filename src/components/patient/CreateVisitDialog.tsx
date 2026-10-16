@@ -491,13 +491,33 @@ export function FormFieldEntry({
 				<div className="space-y-1">
 					{label}
 					{desc}
-					<Textarea
-						id={inputId}
-						value={value ?? ""}
-						onChange={(e) => onChange(e.target.value)}
-						required={field.required}
-						rows={3}
-					/>
+					<div className="relative">
+						<Textarea
+							id={inputId}
+							value={value ?? ""}
+							onChange={(e) => onChange(e.target.value)}
+							required={field.required}
+							rows={3}
+							maxLength={field.charLimit}
+							className={
+								field.charLimit
+									? "field-sizing-content min-h-24 resize-none leading-6 pr-16"
+									: "resize-none leading-6"
+							}
+							style={
+								field.charLimit
+									? {
+											maxHeight: `calc(${Math.max(3, Math.ceil(field.charLimit / 50))} * 1.5rem + 1rem + 2px)`,
+										}
+									: { height: "calc(3 * 1.5rem + 1rem + 2px)" }
+							}
+						/>
+						{field.charLimit ? (
+							<span className="pointer-events-none absolute right-3 bottom-2 text-xs text-destructive">
+								{(value ?? "").length}/{field.charLimit}
+							</span>
+						) : null}
+					</div>
 				</div>
 			);
 		}
@@ -772,6 +792,7 @@ export function CreateVisitDialog({
 						name: f.name,
 						fieldType: f.fieldType,
 						inputType: f.inputType,
+						length: f.length,
 						value: formValues[f.id] ?? null,
 					}));
 

@@ -363,6 +363,7 @@ namespace EventForm {
           fieldType: "free-text";
           inputType: "textarea";
           length: "long";
+          charLimit?: number;
           units?: DoseUnit[] | DurationUnit[];
         }
     );
@@ -432,6 +433,7 @@ namespace EventForm {
     {
       inputType: "text" | "number" | "email" | "password" | "tel";
       length: "short" | "long";
+      charLimit?: number;
       units: DoseUnit[] | DurationUnit[];
     } & HHFieldBase
   > {}
@@ -554,6 +556,7 @@ namespace EventForm {
         Schema.Literal("tel"),
       ),
       length: Schema.Union(Schema.Literal("short"), Schema.Literal("long")),
+      charLimit: Schema.optional(Schema.Number),
       units: Schema.Array(
         Schema.Union(
           Schema.Literal("mg"),

@@ -334,6 +334,57 @@ export function InputsConfiguration({
                       />
                     )}
 
+                    {/* IF the field type is a text input, allow choosing a taller multi-line block for notes */}
+                    <If show={field.fieldType === "free-text" && field.inputType === "text"}>
+                      <Checkbox
+                        onCheckedChange={(checked) =>
+                          onFieldChange(
+                            field.id,
+                            "length",
+                            checked ? "long" : "short",
+                          )
+                        }
+                        checked={field.length === "long"}
+                        label="Multi-line (taller text box for notes)"
+                      />
+                      {field.length === "long" && (
+                        <>
+                          <Checkbox
+                            onCheckedChange={(checked) =>
+                              onFieldChange(
+                                field.id,
+                                "charLimit",
+                                checked ? 100 : undefined,
+                              )
+                            }
+                            checked={field.charLimit != null}
+                            label="Use character limit"
+                          />
+                          {field.charLimit != null && (
+                            <Input
+                              type="number"
+                              min={1}
+                              label="Character Limit"
+                              value={field.charLimit}
+                              onChange={(e) => {
+                                const limit = parseInt(
+                                  e.currentTarget.value,
+                                  10,
+                                );
+                                onFieldChange(
+                                  field.id,
+                                  "charLimit",
+                                  Number.isNaN(limit)
+                                    ? 100
+                                    : Math.max(1, Math.min(5000, limit)),
+                                );
+                              }}
+                            />
+                          )}
+                        </>
+                      )}
+                    </If>
+
                     <Checkbox
                       onCheckedChange={(checked) =>
                         onFieldChange(field.id, "required", checked)
