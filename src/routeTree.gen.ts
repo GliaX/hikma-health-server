@@ -36,6 +36,7 @@ import { Route as AppDataEventsRouteImport } from './routes/app/data.events'
 import { Route as ApiV2SyncRouteImport } from './routes/api/v2.sync'
 import { Route as ApiResourcesIdRouteImport } from './routes/api/resources.$id'
 import { Route as ApiHubVerifyKeyRouteImport } from './routes/api/hub.verify-key'
+import { Route as ApiFormsResourcesRouteImport } from './routes/api/forms.resources'
 import { Route as ApiAuthSignOutRouteImport } from './routes/api/auth.sign-out'
 import { Route as ApiAuthSignInRouteImport } from './routes/api/auth.sign-in'
 import { Route as ApiAuthIsValidTokenRouteImport } from './routes/api/auth.is-valid-token'
@@ -52,6 +53,7 @@ import { Route as AppEventFormsEditSplatRouteImport } from './routes/app/event-f
 import { Route as AppEducationIdEditorRouteImport } from './routes/app/education/$id.editor'
 import { Route as AppClinicsEditSplatRouteImport } from './routes/app/clinics.edit.$'
 import { Route as AppAppointmentsEditSplatRouteImport } from './routes/app/appointments.edit.$'
+import { Route as ApiFormsResourcesIdRouteImport } from './routes/api/forms.resources.$id'
 import { Route as AppSettingsDevicesEditSplatRouteImport } from './routes/app/settings.devices.edit.$'
 import { Route as AppInventoryDrugCatalogueEditSplatRouteImport } from './routes/app/inventory/drug-catalogue.edit.$'
 import { Route as AppInventoryClinicInventoryDrugEditSplatRouteImport } from './routes/app/inventory/clinic-inventory.drug.edit.$'
@@ -194,6 +196,11 @@ const ApiHubVerifyKeyRoute = ApiHubVerifyKeyRouteImport.update({
   path: '/api/hub/verify-key',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFormsResourcesRoute = ApiFormsResourcesRouteImport.update({
+  id: '/api/forms/resources',
+  path: '/api/forms/resources',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSignOutRoute = ApiAuthSignOutRouteImport.update({
   id: '/api/auth/sign-out',
   path: '/api/auth/sign-out',
@@ -279,6 +286,11 @@ const AppAppointmentsEditSplatRoute =
     path: '/appointments/edit/$',
     getParentRoute: () => AppRoute,
   } as any)
+const ApiFormsResourcesIdRoute = ApiFormsResourcesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiFormsResourcesRoute,
+} as any)
 const AppSettingsDevicesEditSplatRoute =
   AppSettingsDevicesEditSplatRouteImport.update({
     id: '/settings/devices/edit/$',
@@ -310,6 +322,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/is-valid-token': typeof ApiAuthIsValidTokenRoute
   '/api/auth/sign-in': typeof ApiAuthSignInRoute
   '/api/auth/sign-out': typeof ApiAuthSignOutRoute
+  '/api/forms/resources': typeof ApiFormsResourcesRouteWithChildren
   '/api/hub/verify-key': typeof ApiHubVerifyKeyRoute
   '/api/resources/$id': typeof ApiResourcesIdRoute
   '/api/v2/sync': typeof ApiV2SyncRoute
@@ -329,6 +342,7 @@ export interface FileRoutesByFullPath {
   '/app/prescriptions/': typeof AppPrescriptionsIndexRoute
   '/app/reports/': typeof AppReportsIndexRoute
   '/app/users/': typeof AppUsersIndexRoute
+  '/api/forms/resources/$id': typeof ApiFormsResourcesIdRoute
   '/app/appointments/edit/$': typeof AppAppointmentsEditSplatRoute
   '/app/clinics/edit/$': typeof AppClinicsEditSplatRoute
   '/app/education/$id/editor': typeof AppEducationIdEditorRoute
@@ -356,6 +370,7 @@ export interface FileRoutesByTo {
   '/api/auth/is-valid-token': typeof ApiAuthIsValidTokenRoute
   '/api/auth/sign-in': typeof ApiAuthSignInRoute
   '/api/auth/sign-out': typeof ApiAuthSignOutRoute
+  '/api/forms/resources': typeof ApiFormsResourcesRouteWithChildren
   '/api/hub/verify-key': typeof ApiHubVerifyKeyRoute
   '/api/resources/$id': typeof ApiResourcesIdRoute
   '/api/v2/sync': typeof ApiV2SyncRoute
@@ -375,6 +390,7 @@ export interface FileRoutesByTo {
   '/app/prescriptions': typeof AppPrescriptionsIndexRoute
   '/app/reports': typeof AppReportsIndexRoute
   '/app/users': typeof AppUsersIndexRoute
+  '/api/forms/resources/$id': typeof ApiFormsResourcesIdRoute
   '/app/appointments/edit/$': typeof AppAppointmentsEditSplatRoute
   '/app/clinics/edit/$': typeof AppClinicsEditSplatRoute
   '/app/education/$id/editor': typeof AppEducationIdEditorRoute
@@ -405,6 +421,7 @@ export interface FileRoutesById {
   '/api/auth/is-valid-token': typeof ApiAuthIsValidTokenRoute
   '/api/auth/sign-in': typeof ApiAuthSignInRoute
   '/api/auth/sign-out': typeof ApiAuthSignOutRoute
+  '/api/forms/resources': typeof ApiFormsResourcesRouteWithChildren
   '/api/hub/verify-key': typeof ApiHubVerifyKeyRoute
   '/api/resources/$id': typeof ApiResourcesIdRoute
   '/api/v2/sync': typeof ApiV2SyncRoute
@@ -424,6 +441,7 @@ export interface FileRoutesById {
   '/app/prescriptions/': typeof AppPrescriptionsIndexRoute
   '/app/reports/': typeof AppReportsIndexRoute
   '/app/users/': typeof AppUsersIndexRoute
+  '/api/forms/resources/$id': typeof ApiFormsResourcesIdRoute
   '/app/appointments/edit/$': typeof AppAppointmentsEditSplatRoute
   '/app/clinics/edit/$': typeof AppClinicsEditSplatRoute
   '/app/education/$id/editor': typeof AppEducationIdEditorRoute
@@ -455,6 +473,7 @@ export interface FileRouteTypes {
     | '/api/auth/is-valid-token'
     | '/api/auth/sign-in'
     | '/api/auth/sign-out'
+    | '/api/forms/resources'
     | '/api/hub/verify-key'
     | '/api/resources/$id'
     | '/api/v2/sync'
@@ -474,6 +493,7 @@ export interface FileRouteTypes {
     | '/app/prescriptions/'
     | '/app/reports/'
     | '/app/users/'
+    | '/api/forms/resources/$id'
     | '/app/appointments/edit/$'
     | '/app/clinics/edit/$'
     | '/app/education/$id/editor'
@@ -501,6 +521,7 @@ export interface FileRouteTypes {
     | '/api/auth/is-valid-token'
     | '/api/auth/sign-in'
     | '/api/auth/sign-out'
+    | '/api/forms/resources'
     | '/api/hub/verify-key'
     | '/api/resources/$id'
     | '/api/v2/sync'
@@ -520,6 +541,7 @@ export interface FileRouteTypes {
     | '/app/prescriptions'
     | '/app/reports'
     | '/app/users'
+    | '/api/forms/resources/$id'
     | '/app/appointments/edit/$'
     | '/app/clinics/edit/$'
     | '/app/education/$id/editor'
@@ -549,6 +571,7 @@ export interface FileRouteTypes {
     | '/api/auth/is-valid-token'
     | '/api/auth/sign-in'
     | '/api/auth/sign-out'
+    | '/api/forms/resources'
     | '/api/hub/verify-key'
     | '/api/resources/$id'
     | '/api/v2/sync'
@@ -568,6 +591,7 @@ export interface FileRouteTypes {
     | '/app/prescriptions/'
     | '/app/reports/'
     | '/app/users/'
+    | '/api/forms/resources/$id'
     | '/app/appointments/edit/$'
     | '/app/clinics/edit/$'
     | '/app/education/$id/editor'
@@ -595,6 +619,7 @@ export interface RootRouteChildren {
   ApiAuthIsValidTokenRoute: typeof ApiAuthIsValidTokenRoute
   ApiAuthSignInRoute: typeof ApiAuthSignInRoute
   ApiAuthSignOutRoute: typeof ApiAuthSignOutRoute
+  ApiFormsResourcesRoute: typeof ApiFormsResourcesRouteWithChildren
   ApiHubVerifyKeyRoute: typeof ApiHubVerifyKeyRoute
   ApiResourcesIdRoute: typeof ApiResourcesIdRoute
   ApiV2SyncRoute: typeof ApiV2SyncRoute
@@ -793,6 +818,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiHubVerifyKeyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/forms/resources': {
+      id: '/api/forms/resources'
+      path: '/api/forms/resources'
+      fullPath: '/api/forms/resources'
+      preLoaderRoute: typeof ApiFormsResourcesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/sign-out': {
       id: '/api/auth/sign-out'
       path: '/api/auth/sign-out'
@@ -905,6 +937,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAppointmentsEditSplatRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/forms/resources/$id': {
+      id: '/api/forms/resources/$id'
+      path: '/$id'
+      fullPath: '/api/forms/resources/$id'
+      preLoaderRoute: typeof ApiFormsResourcesIdRouteImport
+      parentRoute: typeof ApiFormsResourcesRoute
+    }
     '/app/settings/devices/edit/$': {
       id: '/app/settings/devices/edit/$'
       path: '/settings/devices/edit/$'
@@ -1016,6 +1055,17 @@ const EducationRouteWithChildren = EducationRoute._addFileChildren(
   EducationRouteChildren,
 )
 
+interface ApiFormsResourcesRouteChildren {
+  ApiFormsResourcesIdRoute: typeof ApiFormsResourcesIdRoute
+}
+
+const ApiFormsResourcesRouteChildren: ApiFormsResourcesRouteChildren = {
+  ApiFormsResourcesIdRoute: ApiFormsResourcesIdRoute,
+}
+
+const ApiFormsResourcesRouteWithChildren =
+  ApiFormsResourcesRoute._addFileChildren(ApiFormsResourcesRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
@@ -1025,6 +1075,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthIsValidTokenRoute: ApiAuthIsValidTokenRoute,
   ApiAuthSignInRoute: ApiAuthSignInRoute,
   ApiAuthSignOutRoute: ApiAuthSignOutRoute,
+  ApiFormsResourcesRoute: ApiFormsResourcesRouteWithChildren,
   ApiHubVerifyKeyRoute: ApiHubVerifyKeyRoute,
   ApiResourcesIdRoute: ApiResourcesIdRoute,
   ApiV2SyncRoute: ApiV2SyncRoute,

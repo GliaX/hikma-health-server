@@ -39,3 +39,6 @@ QA_TESTING_GUIDE.tsv
 
 # Uploaded assets and resources in "disk upload" mode.
 data/
+
+.idea/
+.agentbridge/
