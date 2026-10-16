@@ -131,6 +131,19 @@ function FieldValue({ item }: { item: FormDataItem }) {
 
 	// Multi-select stored as "; "-separated string
 	const str = String(item.value);
+
+	// Multi-line free text (notes) — preserve line breaks. Also respect
+	// newlines in legacy entries whose saved config has no `length`.
+	if (
+		item.length === "long" ||
+		item.inputType === "textarea" ||
+		str.includes("\n")
+	) {
+		return (
+			<span className="text-sm whitespace-pre-wrap break-words">{str}</span>
+		);
+	}
+
 	if (str.includes("; ")) {
 		return <span className="text-sm">{str.split("; ").join(", ")}</span>;
 	}
