@@ -37,8 +37,12 @@ export const isEpochTimestamp = (value: unknown): boolean =>
 export const isDateColumn = (name: string): boolean =>
   name.endsWith("_at") ||
   name.endsWith("_date") ||
+  name.endsWith("_timestamp") ||
+  name.endsWith("_datetime") ||
   name === "timestamp" ||
-  name === "last_modified";
+  name === "last_modified" ||
+  name === "date_value" ||
+  name === "date_of_birth";
 
 namespace Sync {
   /**
@@ -690,7 +694,7 @@ namespace Sync {
               return false;
             })
             .map(([key, value]) => {
-              if (isEpochTimestamp(value)) {
+              if (isDateColumn(key) && isEpochTimestamp(value)) {
                 console.warn(
                   `[sync] Converting epoch timestamp in "${tableName}.${key}": ${value}`,
                 );

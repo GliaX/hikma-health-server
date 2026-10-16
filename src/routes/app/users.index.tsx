@@ -23,6 +23,8 @@ import {
   getAllUsers,
   getClinicIdsWithUserPermission,
 } from "@/lib/server-functions/users";
+import { getAllClinics } from "@/lib/server-functions/clinics";
+import { Result } from "@/lib/result";
 import UserClinicPermissions from "@/models/user-clinic-permissions";
 import { permissionsMiddleware } from "@/middleware/auth";
 
@@ -60,8 +62,10 @@ export const Route = createFileRoute("/app/users/")({
 
   loader: async () => {
     const currentUserId = await getCurrentUserId();
+    const clinicsResult = await getAllClinics();
     return {
       users: await getAllUsers(),
+      clinics: Result.isOk(clinicsResult) ? clinicsResult.data : [],
       currentUserId,
       currentUserAdminClinics: await getClinicIdsWithUserPermission({
         data: {
@@ -75,8 +79,18 @@ export const Route = createFileRoute("/app/users/")({
 });
 
 function RouteComponent() {
-  const { users, currentUserId, isSuperAdmin, currentUserAdminClinics } =
+  const { users, clinics, currentUserId, isSuperAdmin, currentUserAdminClinics } =
     Route.useLoaderData();
+  // Read clinicId straight from the URL so "Clear filter" takes effect without
+  // needing the loader to re-run on a search-only navigation.
+  const search = Route.useSearch() as { clinicId?: string };
+  const filterClinicId = search.clinicId ?? null;
+  const filterClinicName = filterClinicId
+    ? clinics.find((c) => c.id === filterClinicId)?.name ?? filterClinicId
+    : null;
+  const visibleUsers = filterClinicId
+    ? users.filter((u) => u.clinic_id === filterClinicId)
+    : users;
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
@@ -120,6 +134,19 @@ function RouteComponent() {
         </Button>
       </div>
 
+      <If show={filterClinicId !== null}>
+        <div className="mb-4 text-sm text-muted-foreground">
+          Filtered to staff in clinic{" "}
+          <span className="font-medium text-foreground">
+            {filterClinicName}
+          </span>
+          {" · "}
+          <Link to="/app/users" className="underline hover:text-foreground">
+            Clear filter
+          </Link>
+        </div>
+      </If>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -132,7 +159,7 @@ function RouteComponent() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map((user) => (
+            {visibleUsers.map((user) => (
               <TableRow key={user.id}>
                 <TableCell>{user.name}</TableCell>
                 <TableCell>{user.email}</TableCell>
@@ -181,7 +208,7 @@ function RouteComponent() {
                 </TableCell>
               </TableRow>
             ))}
-            {users.length === 0 && (
+            {visibleUsers.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-4">
                   No users found

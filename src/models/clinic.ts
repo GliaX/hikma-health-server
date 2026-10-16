@@ -210,6 +210,9 @@ namespace Clinic {
       }
 
       const currentUser = userOption.value;
+      if (currentUser.role !== User.ROLES.SUPER_ADMIN) {
+        return Promise.reject(new Error("Unauthorized"));
+      }
 
       if (typeof id !== "string" || id.length <= 5) {
         const clinicId = uuidV1();

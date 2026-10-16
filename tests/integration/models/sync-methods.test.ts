@@ -14,13 +14,13 @@ const createdIds: {
   visits: string[];
   clinics: string[];
   users: string[];
-  userClinicPermissions: string[];
+  permissions: string[];
 } = {
   patients: [],
   visits: [],
   clinics: [],
   users: [],
-  userClinicPermissions: [],
+  permissions: [],
 };
 
 // --- Fixtures ---
@@ -66,27 +66,37 @@ const insertUser = async (clinicId: string) => {
       deleted_at: null,
     })
     .execute();
+  await insertPermissions(id, clinicId);
+  return id;
+};
 
-  // Sync scoping is permission-driven: without a permissions row the user
-  // has no clinic scope and receives no records (fail-closed by design).
-  const ucpId = uuidV1();
-  createdIds.userClinicPermissions.push(ucpId);
+// User callers are clinic-scoped by can_view_history / can_edit_records in
+// Sync, so grant the test user provider-level permissions for the clinic
+// (mirrors the permission rows User.API.create writes in production).
+const insertPermissions = async (userId: string, clinicId: string) => {
+  createdIds.permissions.push(`${userId}:${clinicId}`);
   await testDb
     .insertInto("user_clinic_permissions")
     .values({
-      id: ucpId,
-      user_id: id,
+      user_id: userId,
       clinic_id: clinicId,
       can_register_patients: true,
       can_view_history: true,
       can_edit_records: true,
       can_delete_records: false,
       is_clinic_admin: false,
+      can_edit_other_provider_event: false,
+      can_download_patient_reports: true,
+      can_prescribe_medications: true,
+      can_dispense_medications: false,
+      can_delete_patient_visits: false,
+      can_delete_patient_records: false,
+      created_by: null,
+      last_modified_by: null,
       created_at: sql`now()`,
       updated_at: sql`now()`,
     })
     .execute();
-  return id;
 };
 
 const insertPatient = async (overrides: Record<string, unknown> = {}) => {
@@ -149,15 +159,18 @@ const makeMobileCaller = (
 
 // Cleanup in dependency order
 afterEach(async () => {
+  for (const pair of createdIds.permissions) {
+    const [userId, clinicId] = pair.split(":");
+    await testDb
+      .deleteFrom("user_clinic_permissions")
+      .where("user_id", "=", userId)
+      .where("clinic_id", "=", clinicId)
+      .execute();
+  }
   for (const id of createdIds.visits)
     await testDb.deleteFrom("visits").where("id", "=", id).execute();
   for (const id of createdIds.patients)
     await testDb.deleteFrom("patients").where("id", "=", id).execute();
-  for (const id of createdIds.userClinicPermissions)
-    await testDb
-      .deleteFrom("user_clinic_permissions")
-      .where("id", "=", id)
-      .execute();
   for (const id of createdIds.users)
     await testDb.deleteFrom("users").where("id", "=", id).execute();
   for (const id of createdIds.clinics)
@@ -165,7 +178,6 @@ afterEach(async () => {
 
   createdIds.visits.length = 0;
   createdIds.patients.length = 0;
-  createdIds.userClinicPermissions.length = 0;
   createdIds.users.length = 0;
   createdIds.clinics.length = 0;
 });
@@ -178,10 +190,7 @@ describe("Sync.getDeltaRecords (integration)", () => {
     const userId = await insertUser(clinicId);
     const caller = makeMobileCaller(userId, clinicId);
 
-    // Use the DB clock so the boundary is in the same clock domain as
-    // server_created_at set by PostgreSQL NOW().
-    const { rows: [{ t0 }] } = await sql<{ t0: Date }>`SELECT now() AS t0`.execute(testDb);
-    const beforeInsert = t0.getTime();
+    const beforeInsert = Date.now();
     await new Promise((r) => setTimeout(r, 50));
 
     await insertPatient();
@@ -208,11 +217,14 @@ describe("Sync.getDeltaRecords (integration)", () => {
 
     const patientId = await insertPatient();
 
+    // Take the cutoff from the DB clock, not Date.now(): server_created_at and
+    // last_modified are stamped by the DB, so any skew between this machine and
+    // the DB server can put a local cutoff on the wrong side of either one.
     await new Promise((r) => setTimeout(r, 50));
-    // Use the DB clock so the boundary is in the same clock domain as
-    // server_created_at / last_modified set by PostgreSQL NOW().
-    const { rows: [{ t }] } = await sql<{ t: Date }>`SELECT now() AS t`.execute(testDb);
-    const afterCreate = t.getTime();
+    const { db_now } = await testDb
+      .selectNoFrom(sql<Date>`clock_timestamp()`.as("db_now"))
+      .executeTakeFirstOrThrow();
+    const afterCreate = db_now.getTime();
     await new Promise((r) => setTimeout(r, 50));
 
     // Update the patient
@@ -238,10 +250,7 @@ describe("Sync.getDeltaRecords (integration)", () => {
     const patientId = await insertPatient();
 
     await new Promise((r) => setTimeout(r, 50));
-    // Use the DB clock so the boundary is in the same clock domain as
-    // deleted_at set by PostgreSQL NOW().
-    const { rows: [{ t1 }] } = await sql<{ t1: Date }>`SELECT now() AS t1`.execute(testDb);
-    const afterCreate = t1.getTime();
+    const afterCreate = Date.now();
     await new Promise((r) => setTimeout(r, 50));
 
     // Soft delete
@@ -289,10 +298,7 @@ describe("Sync.getDeltaRecords (integration)", () => {
     const userId = await insertUser(clinicId);
     const caller = makeMobileCaller(userId, clinicId);
 
-    // Use the DB clock so the boundary is in the same clock domain as
-    // server_created_at set by PostgreSQL NOW().
-    const { rows: [{ t2 }] } = await sql<{ t2: Date }>`SELECT now() AS t2`.execute(testDb);
-    const beforeInsert = t2.getTime();
+    const beforeInsert = Date.now();
     await new Promise((r) => setTimeout(r, 50));
 
     const patientId = await insertPatient();
@@ -542,10 +548,7 @@ describe("Sync round-trip (integration)", () => {
     const userId = await insertUser(clinicId);
     const caller = makeMobileCaller(userId, clinicId);
 
-    // Use the DB clock so the boundary is in the same clock domain as
-    // server_created_at set by PostgreSQL NOW() inside persistClientChanges.
-    const { rows: [{ t3 }] } = await sql<{ t3: Date }>`SELECT now() AS t3`.execute(testDb);
-    const beforePush = t3.getTime();
+    const beforePush = Date.now();
     await new Promise((r) => setTimeout(r, 50));
 
     const patientId = uuidV1();

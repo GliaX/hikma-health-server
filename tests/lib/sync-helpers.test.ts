@@ -101,12 +101,30 @@ describe("isDateColumn", () => {
     expect(isDateColumn("date_of_birth_date")).toBe(true);
   });
 
+  it("matches columns ending with _timestamp", () => {
+    expect(isDateColumn("event_timestamp")).toBe(true);
+    expect(isDateColumn("metric_timestamp")).toBe(true);
+  });
+
+  it("matches columns ending with _datetime", () => {
+    expect(isDateColumn("appointment_datetime")).toBe(true);
+    expect(isDateColumn("scheduled_datetime")).toBe(true);
+  });
+
   it("matches 'timestamp' exactly", () => {
     expect(isDateColumn("timestamp")).toBe(true);
   });
 
   it("matches 'last_modified' exactly", () => {
     expect(isDateColumn("last_modified")).toBe(true);
+  });
+
+  it("matches 'date_value' exactly (EAV outlier)", () => {
+    expect(isDateColumn("date_value")).toBe(true);
+  });
+
+  it("matches 'date_of_birth' exactly", () => {
+    expect(isDateColumn("date_of_birth")).toBe(true);
   });
 
   it("rejects non-date columns", () => {
@@ -119,6 +137,16 @@ describe("isDateColumn", () => {
   it("rejects partial matches", () => {
     expect(isDateColumn("created_at_backup")).toBe(false);
     expect(isDateColumn("timestamp_field")).toBe(false);
+  });
+
+  // Regression: identifier-shaped columns must not be classified as date columns.
+  // isEpochTimestamp matches any 10-13 digit numeric string — these columns commonly
+  // hold values of that exact shape (phone numbers, IDs), and prior logic coerced
+  // them to bogus ISO timestamps via toSafeDateString.
+  it("rejects identifier columns whose values can look like epoch timestamps", () => {
+    expect(isDateColumn("phone")).toBe(false);
+    expect(isDateColumn("government_id")).toBe(false);
+    expect(isDateColumn("external_patient_id")).toBe(false);
   });
 
   // Property: any string ending with _at is a date column

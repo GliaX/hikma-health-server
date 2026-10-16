@@ -33,6 +33,7 @@ import type Clinic from "@/models/clinic";
 import type ClinicDepartment from "@/models/clinic-department";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { isUserSuperAdmin } from "@/lib/auth/request";
 
 export const Route = createFileRoute("/app/clinics/$id/")({
   loader: async ({ params }) => {
@@ -48,8 +49,10 @@ export const Route = createFileRoute("/app/clinics/$id/")({
     }
 
     const { clinic, departments } = result.data;
+    // UI-only gate; the server functions enforce super_admin independently.
+    const isSuperAdmin = await isUserSuperAdmin();
 
-    return { clinic, departments };
+    return { clinic, departments, isSuperAdmin };
   },
   component: RouteComponent,
   errorComponent: ErrorComponent,
@@ -233,7 +236,7 @@ function ErrorComponent({ error }: { error: Error }) {
 }
 
 function RouteComponent() {
-  const { clinic, departments } = Route.useLoaderData();
+  const { clinic, departments, isSuperAdmin } = Route.useLoaderData();
   const navigate = Route.useNavigate();
   const route = useRouter();
 
@@ -331,16 +334,18 @@ function RouteComponent() {
         <div className="flex items-center gap-4">
           <h1 className="text-3xl font-bold">Clinic Details</h1>
         </div>
-        <div className="flex gap-2">
-          <Button
-            onClick={handleEditClinic}
-            variant="outline"
-            className="gap-2"
-          >
-            <Edit className="h-4 w-4" />
-            Edit
-          </Button>
-        </div>
+        <If show={isSuperAdmin}>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleEditClinic}
+              variant="outline"
+              className="gap-2"
+            >
+              <Edit className="h-4 w-4" />
+              Edit
+            </Button>
+          </div>
+        </If>
       </div>
 
       {/* Main clinic information card */}
@@ -581,9 +586,23 @@ function RouteComponent() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline">View Patients</Button>
-            <Button variant="outline">View Staff</Button>
-            {!clinic.is_archived && (
+            <Button variant="outline" asChild>
+              <Link
+                to="/app/patients"
+                search={{ clinicId: clinic.id } as never}
+              >
+                View Patients
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link
+                to="/app/users"
+                search={{ clinicId: clinic.id } as never}
+              >
+                View Staff
+              </Link>
+            </Button>
+            {isSuperAdmin && !clinic.is_archived && (
               <Button
                 variant="outline"
                 className="text-yellow-600 hover:text-yellow-700"
@@ -592,7 +611,7 @@ function RouteComponent() {
                 Archive Clinic
               </Button>
             )}
-            {clinic.is_archived && (
+            {isSuperAdmin && clinic.is_archived && (
               <Button
                 variant="outline"
                 className="text-green-600 hover:text-green-700"
