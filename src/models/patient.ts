@@ -650,6 +650,7 @@ namespace Patient {
     export const search = createServerOnlyFn(
       async ({
         searchQuery,
+        searchGovernmentId,
         offset = 0,
         limit,
         includeCount = false,
@@ -660,6 +661,7 @@ namespace Patient {
         clinicIds: filterClinicIds,
       }: {
         searchQuery: string;
+        searchGovernmentId?: string;
         offset?: number;
         limit?: number;
         includeCount?: boolean;
@@ -671,6 +673,12 @@ namespace Patient {
       }): Promise<PatientsQueryResult> => {
         const hasTextQuery = searchQuery && searchQuery.trim() !== "";
         const searchPattern = hasTextQuery ? `%${searchQuery}%` : "";
+
+        const hasGovernmentIdQuery =
+          searchGovernmentId && searchGovernmentId.trim() !== "";
+        const governmentIdPattern = hasGovernmentIdQuery
+          ? `%${searchGovernmentId.trim()}%`
+          : "";
 
         // permissions check
         const clinicIds =
@@ -705,6 +713,11 @@ namespace Patient {
             )`
           : sql``;
 
+        // Government ID search — independent of the text query
+        const governmentIdSearchClause = hasGovernmentIdQuery
+          ? sql`AND LOWER(COALESCE(CAST(p.government_id AS TEXT), '')) LIKE LOWER(${governmentIdPattern})`
+          : sql``;
+
         // Registration date filter on p.created_at
         const regDateClause = buildDateRangeClause(
           "p.created_at",
@@ -727,6 +740,7 @@ namespace Patient {
         const query = sql`
       ${buildPatientAttributesBaseQuery(clinicIds)}
       ${textSearchClause}
+      ${governmentIdSearchClause}
       ${regDateClause}
       ${visitsDateClause}
       ${clinicFilterClause}
@@ -745,6 +759,7 @@ namespace Patient {
           FROM patients p
           WHERE p.is_deleted = false
           ${textSearchClause}
+          ${governmentIdSearchClause}
           ${regDateClause}
           ${visitsDateClause}
           ${clinicFilterClause}

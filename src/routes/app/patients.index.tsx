@@ -96,6 +96,7 @@ const getFilteredPatientsForExport = createServerFn({ method: "GET" })
   .inputValidator(
     (data: {
       searchQuery: string;
+      searchGovernmentId: string;
       registrationDateStart?: string;
       registrationDateEnd?: string;
       visitsDateStart?: string;
@@ -110,6 +111,7 @@ const getFilteredPatientsForExport = createServerFn({ method: "GET" })
     }
     const { patients } = await Patient.API.search({
       searchQuery: data.searchQuery,
+      searchGovernmentId: data.searchGovernmentId,
       includeCount: false,
       registrationDateStart: data.registrationDateStart,
       registrationDateEnd: data.registrationDateEnd,
@@ -155,6 +157,7 @@ type SearchState = {
   clinicIds: string[];
   registrationDate: [Date | null, Date | null]; // Start date, End date
   visitsInDateRange: [Date | null, Date | null];
+  searchGovernmentId: string;
 };
 
 const initialSearchState: SearchState = {
@@ -162,6 +165,7 @@ const initialSearchState: SearchState = {
   clinicIds: [],
   registrationDate: [null, null],
   visitsInDateRange: [null, null],
+  searchGovernmentId: "",
 };
 
 type SearchAction =
@@ -171,6 +175,7 @@ type SearchAction =
   | { type: "update-registration-date-end"; payload: Date | null }
   | { type: "update-visits-date-start"; payload: Date | null }
   | { type: "update-visits-date-end"; payload: Date | null }
+  | { type: "update-government-id"; payload: string }
   | { type: "reset" };
 
 function searchReducer(draft: SearchState, action: SearchAction) {
@@ -192,6 +197,9 @@ function searchReducer(draft: SearchState, action: SearchAction) {
       break;
     case "update-visits-date-end":
       draft.visitsInDateRange[1] = action.payload;
+      break;
+    case "update-government-id":
+      draft.searchGovernmentId = action.payload;
       break;
     case "reset":
       return initialSearchState;
@@ -256,6 +264,7 @@ function RouteComponent() {
 
   const hasActiveFilters =
     searchState.searchQuery.trim() !== "" ||
+    searchState.searchGovernmentId.trim() !== "" ||
     searchState.clinicIds.length > 0 ||
     searchState.registrationDate[0] !== null ||
     searchState.registrationDate[1] !== null ||
@@ -270,6 +279,7 @@ function RouteComponent() {
     searchPatients({
       data: {
         searchQuery: searchState.searchQuery,
+        searchGovernmentId: searchState.searchGovernmentId,
         offset,
         limit: pageSize,
         registrationDateStart:
@@ -668,6 +678,7 @@ function RouteComponent() {
       const exportData = await getFilteredPatientsForExport({
         data: {
           searchQuery: searchState.searchQuery,
+          searchGovernmentId: searchState.searchGovernmentId,
           registrationDateStart:
             searchState.registrationDate[0]?.toISOString() ?? undefined,
           registrationDateEnd:
@@ -736,6 +747,19 @@ function RouteComponent() {
           onChange={(e) =>
             dispatchSearchAction({
               type: "update-search-query",
+              payload: e.target.value,
+            })
+          }
+        />
+         <Input
+          className="pl-4 pr-4 max-w-2xl"
+          placeholder="Search patients by government ID..."
+          label="Search patients by government ID"
+          type="search"
+          value={searchState.searchGovernmentId}
+          onChange={(e) =>
+            dispatchSearchAction({
+              type: "update-government-id",
               payload: e.target.value,
             })
           }
