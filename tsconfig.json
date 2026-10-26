@@ -39,6 +39,9 @@
       "@/models/sync-paged": [
         "./apps/server/src/models/sync-paged.ts"
       ],
+      "@hikmahealth/js-utils": [
+        "./src/shims/js-utils.ts"
+      ],
       "@/*": [
         "./src/*"
       ]
