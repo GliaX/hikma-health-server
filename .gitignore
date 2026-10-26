@@ -34,6 +34,11 @@ dist
 
 # Stray ReScript build output at repo root (should only ever be packages/**/lib)
 /lib/
+apps/server/lib/
+apps/server/src/lib/
+src/lib/ai-service/report.gen.tsx
+src/lib/ai-service/report.res.mjs
+vendor/
 
 # Debug/Logs
 *.log

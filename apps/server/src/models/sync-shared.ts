@@ -1,25 +1,25 @@
 import { sql, type AliasedRawBuilder } from "kysely";
 import { Logger } from "@hikmahealth/js-utils";
 import { civilDateFromLocalDate } from "@/lib/utils";
-import Patient from "./patient";
-import PatientAdditionalAttribute from "./patient-additional-attribute";
-import Clinic from "./clinic";
-import Visit from "./visit";
-import Event from "./event";
-import EventForm from "./event-form";
-import PatientRegistrationForm from "./patient-registration-form";
-import Appointment from "./appointment";
-import Prescription from "./prescription";
-import PatientVital from "./patient-vital";
-import PatientProblem from "./patient-problem";
-import ClinicDepartment from "./clinic-department";
-import DrugCatalogue from "./drug-catalogue";
-import ClinicInventory from "./clinic-inventory";
-import DispensingRecord from "./dispensing-records";
-import PrescriptionItem from "./prescription-items";
-import User from "./user";
-import Device from "./device";
-import DevicePinCode from "./device-pin-code";
+import Patient from "@/models/patient";
+import PatientAdditionalAttribute from "@/models/patient-additional-attribute";
+import Clinic from "@/models/clinic";
+import Visit from "@/models/visit";
+import Event from "@/models/event";
+import EventForm from "@/models/event-form";
+import PatientRegistrationForm from "@/models/patient-registration-form";
+import Appointment from "@/models/appointment";
+import Prescription from "@/models/prescription";
+import PatientVital from "@/models/patient-vital";
+import PatientProblem from "@/models/patient-problem";
+import ClinicDepartment from "@/models/clinic-department";
+import DrugCatalogue from "@/models/drug-catalogue";
+import ClinicInventory from "@/models/clinic-inventory";
+import DispensingRecord from "@/models/dispensing-records";
+import PrescriptionItem from "@/models/prescription-items";
+import User from "@/models/user";
+import Device from "@/models/device";
+import DevicePinCode from "@/models/device-pin-code";
 
 /**
  * These entities are synced to mobile. They should not contain information that is not needed for mobile use.

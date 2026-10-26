@@ -1,32 +1,31 @@
 import db from "@/db";
 // import AppConfig from "./app-config";
-import { toSafeDateString } from "@/lib/utils";
-import User from "./user";
-import type Device from "./device";
-import UserClinicPermissions from "./user-clinic-permissions";
-import type { RequestCaller } from "@/types";
-import { Logger } from "@hikmahealth/js-utils";
+import {toSafeDateString} from "@/lib/utils";
+import type Device from "@/models/device";
+import UserClinicPermissions from "@/models/user-clinic-permissions";
+import type {RequestCaller} from "@/types";
+import {Logger} from "@hikmahealth/js-utils";
 import {
-  ENTITIES_TO_PUSH_TO_MOBILE,
-  ENTITIES_TO_PUSH_TO_HUB,
-  ENTITIES_TO_PULL_FROM_MOBILE,
-  ENTITIES_TO_PULL_FROM_HUB,
-  EXEMPT_FROM_HISTORY_LIMIT,
-  CLINIC_COLUMN_BY_TABLE,
-  FULL_SNAPSHOT_TABLES,
-  syncSelection,
-  applyClinicScope,
-  INDIRECT_PATIENT_TABLES,
-  INDIRECT_VISIT_TABLES,
-  getMaxHistoryDaysSync,
-  normalizeCivilDates,
+    applyClinicScope,
+    CLINIC_COLUMN_BY_TABLE,
+    ENTITIES_TO_PULL_FROM_HUB,
+    ENTITIES_TO_PULL_FROM_MOBILE,
+    ENTITIES_TO_PUSH_TO_HUB,
+    ENTITIES_TO_PUSH_TO_MOBILE,
+    EXEMPT_FROM_HISTORY_LIMIT,
+    FULL_SNAPSHOT_TABLES,
+    getMaxHistoryDaysSync,
+    INDIRECT_PATIENT_TABLES,
+    INDIRECT_VISIT_TABLES,
+    normalizeCivilDates,
+    syncSelection,
 } from "./sync-shared";
 
 /** Returns true if the value looks like a raw epoch timestamp (10-13 digit numeric string or number, possibly negative for pre-1970 dates). */
 export const isEpochTimestamp = (value: unknown): boolean =>
-  (typeof value === "string" && /^-?\d{10,13}$/.test(value.trim())) ||
-  (typeof value === "number" &&
-    ((value > 1e9 && value < 1e14) || (value < -1e9 && value > -1e14)));
+    (typeof value === "string" && /^-?\d{10,13}$/.test(value.trim())) ||
+    (typeof value === "number" &&
+        ((value > 1e9 && value < 1e14) || (value < -1e9 && value > -1e14)));
 
 /**
  * `pg_catalog.pg_type.typname` values for date/time columns. Kysely's
@@ -34,11 +33,11 @@ export const isEpochTimestamp = (value: unknown): boolean =>
  * `information_schema` spellings (`"timestamp with time zone"`, etc.).
  */
 const PG_DATE_TYPE_NAMES: ReadonlySet<string> = new Set([
-  "date",
-  "timestamp",
-  "timestamptz",
-  "time",
-  "timetz",
+    "date",
+    "timestamp",
+    "timestamptz",
+    "time",
+    "timetz",
 ]);
 
 let dateColumnsByTable: ReadonlyMap<string, ReadonlySet<string>> | null = null;
@@ -54,26 +53,26 @@ let dateColumnsLoadPromise: Promise<void> | null = null;
  * migration creates tables in another schema.
  */
 export const loadDateColumnsByTable = async (): Promise<void> => {
-  if (dateColumnsByTable) return;
-  if (dateColumnsLoadPromise) return dateColumnsLoadPromise;
-  dateColumnsLoadPromise = (async () => {
-    const tables = await db.introspection.getTables();
-    const next = new Map<string, ReadonlySet<string>>();
-    for (const t of tables) {
-      if (t.schema && t.schema !== "public") continue;
-      const dateCols = new Set<string>();
-      for (const col of t.columns) {
-        if (PG_DATE_TYPE_NAMES.has(col.dataType)) dateCols.add(col.name);
-      }
-      next.set(t.name, dateCols);
+    if (dateColumnsByTable) return;
+    if (dateColumnsLoadPromise) return dateColumnsLoadPromise;
+    dateColumnsLoadPromise = (async () => {
+        const tables = await db.introspection.getTables();
+        const next = new Map<string, ReadonlySet<string>>();
+        for (const t of tables) {
+            if (t.schema && t.schema !== "public") continue;
+            const dateCols = new Set<string>();
+            for (const col of t.columns) {
+                if (PG_DATE_TYPE_NAMES.has(col.dataType)) dateCols.add(col.name);
+            }
+            next.set(t.name, dateCols);
+        }
+        dateColumnsByTable = next;
+    })();
+    try {
+        await dateColumnsLoadPromise;
+    } finally {
+        dateColumnsLoadPromise = null;
     }
-    dateColumnsByTable = next;
-  })();
-  try {
-    await dateColumnsLoadPromise;
-  } finally {
-    dateColumnsLoadPromise = null;
-  }
 };
 
 /**
@@ -91,15 +90,15 @@ export const loadDateColumnsByTable = async (): Promise<void> => {
  * loud is safer than silently misclassifying every column as non-date.
  */
 export const isDateColumn = (
-  tableName: string,
-  columnName: string,
+    tableName: string,
+    columnName: string,
 ): boolean => {
-  if (!dateColumnsByTable) {
-    throw new Error(
-      "[sync] isDateColumn called before loadDateColumnsByTable() resolved",
-    );
-  }
-  return dateColumnsByTable.get(tableName)?.has(columnName) ?? false;
+    if (!dateColumnsByTable) {
+        throw new Error(
+            "[sync] isDateColumn called before loadDateColumnsByTable() resolved",
+        );
+    }
+    return dateColumnsByTable.get(tableName)?.has(columnName) ?? false;
 };
 
 /**
@@ -126,14 +125,14 @@ export const isDateColumn = (
  * instead of a count.
  */
 export const classifyUpsertResult = (result: unknown): boolean => {
-  if (result === undefined || result === null) return false;
-  const rows = (result as { numInsertedOrUpdatedRows?: unknown })
-    .numInsertedOrUpdatedRows;
-  if (typeof rows === "bigint") return rows > 0n;
-  // NaN is not > 0, so an unparseable count reads as a rejection — the safe
-  // direction: the client keeps the record pending rather than discarding it.
-  if (typeof rows === "number") return rows > 0;
-  return true;
+    if (result === undefined || result === null) return false;
+    const rows = (result as { numInsertedOrUpdatedRows?: unknown })
+        .numInsertedOrUpdatedRows;
+    if (typeof rows === "bigint") return rows > 0n;
+    // NaN is not > 0, so an unparseable count reads as a rejection — the safe
+    // direction: the client keeps the record pending rather than discarding it.
+    if (typeof rows === "number") return rows > 0;
+    return true;
 };
 
 /**
@@ -147,708 +146,722 @@ export const classifyUpsertResult = (result: unknown): boolean => {
  * report as "every record rejected" with a 200.
  */
 export const recordLevelErrorCode = (error: unknown): string | null => {
-  // pg errors arrive bare from the model layer today; the cause walk covers a
-  // model that wraps its failures, bounded so a self-referential cause cannot
-  // spin.
-  let current: unknown = error;
-  for (let depth = 0; current && depth < 5; depth++) {
-    const code = (current as { code?: unknown }).code;
-    if (typeof code === "string" && /^2[23]/.test(code)) return code;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return null;
+    // pg errors arrive bare from the model layer today; the cause walk covers a
+    // model that wraps its failures, bounded so a self-referential cause cannot
+    // spin.
+    let current: unknown = error;
+    for (let depth = 0; current && depth < 5; depth++) {
+        const code = (current as { code?: unknown }).code;
+        if (typeof code === "string" && /^2[23]/.test(code)) return code;
+        current = (current as { cause?: unknown }).cause;
+    }
+    return null;
 };
 
 namespace Sync {
-  const pushTableNameModelMap = ENTITIES_TO_PULL_FROM_MOBILE.reduce(
-    (acc, entity) => {
-      acc[entity.Table.name] = entity;
-      return acc;
-    },
-    {} as Record<PostTableName, (typeof ENTITIES_TO_PULL_FROM_MOBILE)[number]>,
-  );
+    const pushTableNameModelMap = ENTITIES_TO_PULL_FROM_MOBILE.reduce(
+        (acc, entity) => {
+            acc[entity.Table.name] = entity;
+            return acc;
+        },
+        {} as Record<PostTableName, (typeof ENTITIES_TO_PULL_FROM_MOBILE)[number]>,
+    );
 
-  const hubPushTableNameModelMap = ENTITIES_TO_PULL_FROM_HUB.reduce(
-    (acc, entity) => {
-      acc[entity.Table.name] = entity;
-      return acc;
-    },
-    {} as Record<string, (typeof ENTITIES_TO_PULL_FROM_HUB)[number]>,
-  );
+    const hubPushTableNameModelMap = ENTITIES_TO_PULL_FROM_HUB.reduce(
+        (acc, entity) => {
+            acc[entity.Table.name] = entity;
+            return acc;
+        },
+        {} as Record<string, (typeof ENTITIES_TO_PULL_FROM_HUB)[number]>,
+    );
 
-  export type PostTableName =
-    (typeof ENTITIES_TO_PULL_FROM_MOBILE)[number]["Table"]["name"];
+    export type PostTableName =
+        (typeof ENTITIES_TO_PULL_FROM_MOBILE)[number]["Table"]["name"];
 
-  // Core types for WatermelonDB sync
-  type SyncableEntity = {
-    getDeltaRecords(lastSyncedAt: number): DeltaData;
-    applyDeltaChanges(deltaData: DeltaData, lastSyncedAt: number): void;
-  };
-
-  export type DeltaData = {
-    created: Record<string, any>[];
-    updated: Record<string, any>[];
-    deleted: string[];
-    // toDict(): { created: any[]; updated: any[]; deleted: string[] };
-  };
-
-  /**
-   * Method to init a new DeltaData instance
-   * @param {Record<string, any>[]} created - Array of created records
-   * @param {Record<string, any>[]} updated - Array of updated records
-   * @param {string[]} deleted - Array of deleted record IDs
-   * @returns {DeltaData}
-   */
-  function createDeltaData(
-    created: Record<string, any>[],
-    updated: Record<string, any>[],
-    deleted: string[],
-  ): DeltaData {
-    return {
-      created,
-      updated,
-      deleted,
+    // Core types for WatermelonDB sync
+    type SyncableEntity = {
+        getDeltaRecords(lastSyncedAt: number): DeltaData;
+        applyDeltaChanges(deltaData: DeltaData, lastSyncedAt: number): void;
     };
-  }
 
-  // Pull endpoint types
-  type PullRequest = {
-    last_pulled_at: number;
-    schemaVersion?: number;
-    migration?: any;
-  };
-
-  type PullResponse = {
-    changes: {
-      [tableKey: string]: {
+    export type DeltaData = {
         created: Record<string, any>[];
         updated: Record<string, any>[];
         deleted: string[];
-      };
+        // toDict(): { created: any[]; updated: any[]; deleted: string[] };
     };
-    timestamp: number;
-  };
-
-  // Push endpoint types
-  export type PushRequest = {
-    [tableKey in PostTableName]: {
-      created: Record<string, any>[];
-      updated: Record<string, any>[];
-      deleted: string[];
-    };
-  };
-
-  type PushResponse = {
-    ok: boolean;
-    timestamp: string;
-  };
-
-  type DBChangeSet = PullResponse["changes"];
-
-  /**
-   * Every live row as `updated`, every removed row's id as `deleted`.
-   *
-   * `updated` rather than `created`: WatermelonDB updates the rows the device
-   * already has and creates the ones it does not, whereas `created` logs an
-   * error for every row that already exists. The one error it does log per
-   * created row is worth keeping — it names devices that were missing a clinic.
-   *
-   * Both predicates read `is_deleted` null-safely, since it is nullable and
-   * `is_deleted = false` does not match NULL — such a row would otherwise be
-   * neither live nor deleted and vanish from both lists. The deleted side keys
-   * on `is_deleted` OR `deleted_at` so a row flagged without a timestamp is
-   * still removed from devices.
-   */
-  const getFullSnapshot = async (
-    tableName: string,
-    hubClinicIds: string[] | null,
-    peerType: Device.DeviceTypeT,
-    includeNullClinic = false,
-  ): Promise<DeltaData> => {
-    const selection = syncSelection(tableName, peerType);
-    const liveRows = db
-      .selectFrom(tableName as "clinics")
-      .where("deleted_at", "is", null)
-      .where("is_deleted", "is not", true);
-
-    const live = await applyClinicScope(
-      // Cast for the same reason as the table name above: the projection is
-      // resolved at runtime, which the static schema cannot express.
-      selection
-        ? liveRows.select(selection as unknown as "id")
-        : liveRows.selectAll(),
-      tableName,
-      hubClinicIds,
-      includeNullClinic,
-    ).execute();
-
-    const removed = await applyClinicScope(
-      db
-        .selectFrom(tableName as "clinics")
-        .where((eb) =>
-          eb.or([eb("is_deleted", "=", true), eb("deleted_at", "is not", null)]),
-        )
-        .select("id"),
-      tableName,
-      hubClinicIds,
-      includeNullClinic,
-    ).execute();
-
-    return createDeltaData(
-      [],
-      normalizeCivilDates(tableName, live),
-      removed.map((record: { id: string }) => record.id),
-    );
-  };
-
-  /**
-   * Get the delta records for the last synced at time
-   * TODO: if lastSyncedAt is 0, no deleted records should be returned
-   * @param lastSyncedAt
-   * @returns
-   */
-  export const getDeltaRecords = async (
-    lastSyncedAt: number,
-    peerType: Device.DeviceTypeT,
-    caller: RequestCaller,
-  ): Promise<DBChangeSet> => {
-    /**
-     * Determine what gets pushed to the client. Only authenticated device
-     * callers (sync hubs) receive the hub entity set — a user caller claiming
-     * peerType "sync_hub" is treated as a regular user peer.
-     */
-    const isDeviceHub = peerType === "sync_hub" && "device" in caller;
-    const ENTITIES_TO_PUSH_TO_CLIENT = isDeviceHub
-      ? ENTITIES_TO_PUSH_TO_HUB
-      : ENTITIES_TO_PUSH_TO_MOBILE;
-    const result: DBChangeSet = {};
 
     /**
-     * Clinic scope for pulls: hub devices receive data for their assigned
-     * clinics; user callers only for clinics where they hold
-     * can_view_history. Null means unrestricted (never the case for users).
+     * Method to init a new DeltaData instance
+     * @param {Record<string, any>[]} created - Array of created records
+     * @param {Record<string, any>[]} updated - Array of updated records
+     * @param {string[]} deleted - Array of deleted record IDs
+     * @returns {DeltaData}
      */
-    const hubClinicIds: string[] | null = isDeviceHub
-      ? ((caller.device.clinic_ids as unknown as string[]) ?? null)
-      : "user" in caller
-        ? await UserClinicPermissions.API.getClinicIdsWithPermission(
-            (caller as { user: { id: string } }).user.id,
-            "can_view_history",
-          )
-        : null;
-
-    // User peers also receive records with no clinic assignment; hubs
-    // keep the strict clinic filter.
-    const includeNullClinic = !isDeviceHub;
-
-    const clientLastSyncDate = new Date(lastSyncedAt);
-    const now = new Date();
-
-    // Apply history limit if MAX_HISTORY_DAYS_SYNC is set
-    const maxHistoryDays = getMaxHistoryDaysSync();
-    let effectiveLastSyncDate = clientLastSyncDate;
-
-    if (maxHistoryDays !== null) {
-      const cutoffDate = new Date(
-        now.getTime() - maxHistoryDays * 24 * 60 * 60 * 1000,
-      );
-      // Use the more recent date between client's last sync and the cutoff
-      effectiveLastSyncDate =
-        clientLastSyncDate < cutoffDate ? cutoffDate : clientLastSyncDate;
+    function createDeltaData(
+        created: Record<string, any>[],
+        updated: Record<string, any>[],
+        deleted: string[],
+    ): DeltaData {
+        return {
+            created,
+            updated,
+            deleted,
+        };
     }
 
-    for (const entity of ENTITIES_TO_PUSH_TO_CLIENT) {
-      // It can happen that the server table name is different from the mobile table name
-      // This just ensures we do the correct mapping. Often the name is the same.
-      const server_table_name = entity.Table.name;
-      const mobile_table_name = entity.Table.mobileName;
-      const always_push_to_mobile =
-        entity.Table?.ALWAYS_PUSH_TO_MOBILE || false;
+    // Pull endpoint types
+    type PullRequest = {
+        last_pulled_at: number;
+        schemaVersion?: number;
+        migration?: any;
+    };
 
-      // Replicated whole, so the watermark never applies to it.
-      if (FULL_SNAPSHOT_TABLES.has(server_table_name)) {
-        result[mobile_table_name] = await getFullSnapshot(
-          server_table_name,
-          hubClinicIds,
-          peerType,
-          includeNullClinic,
-        );
-        continue;
-      }
+    type PullResponse = {
+        changes: {
+            [tableKey: string]: {
+                created: Record<string, any>[];
+                updated: Record<string, any>[];
+                deleted: string[];
+            };
+        };
+        timestamp: number;
+    };
 
-      // Configuration entities should always sync full history, not limited by MAX_HISTORY_DAYS_SYNC
-      const isExemptFromHistoryLimit =
-        EXEMPT_FROM_HISTORY_LIMIT.includes(mobile_table_name);
+    // Push endpoint types
+    export type PushRequest = {
+        [tableKey in PostTableName]: {
+            created: Record<string, any>[];
+            updated: Record<string, any>[];
+            deleted: string[];
+        };
+    };
 
-      // TODO: Implementation logic for always_push_to_mobile needs to be thought out first.
-      // let lastSyncDate = always_push_to_mobile ? now : effectiveLastSyncDate;
-      let lastSyncDate = isExemptFromHistoryLimit
-        ? clientLastSyncDate
-        : effectiveLastSyncDate;
+    type PushResponse = {
+        ok: boolean;
+        timestamp: string;
+    };
 
-      // Held on the delta path too, so dropping a table out of
-      // FULL_SNAPSHOT_TABLES cannot quietly widen what a device receives.
-      const selection = syncSelection(server_table_name, peerType);
+    type DBChangeSet = PullResponse["changes"];
 
-      // Query for new records created at or after last sync.
-      // Using >= to avoid missing records created exactly at the boundary timestamp.
-      const createdRows = db
-        .selectFrom(server_table_name)
-        .where("server_created_at", ">=", lastSyncDate)
-        .where("deleted_at", "is", null)
-        .where("is_deleted", "=", false);
+    /**
+     * Every live row as `updated`, every removed row's id as `deleted`.
+     *
+     * `updated` rather than `created`: WatermelonDB updates the rows the device
+     * already has and creates the ones it does not, whereas `created` logs an
+     * error for every row that already exists. The one error it does log per
+     * created row is worth keeping — it names devices that were missing a clinic.
+     *
+     * Both predicates read `is_deleted` null-safely, since it is nullable and
+     * `is_deleted = false` does not match NULL — such a row would otherwise be
+     * neither live nor deleted and vanish from both lists. The deleted side keys
+     * on `is_deleted` OR `deleted_at` so a row flagged without a timestamp is
+     * still removed from devices.
+     */
+    const getFullSnapshot = async (
+        tableName: string,
+        hubClinicIds: string[] | null,
+        peerType: Device.DeviceTypeT,
+        includeNullClinic = false,
+    ): Promise<DeltaData> => {
+        const selection = syncSelection(tableName, peerType);
+        const liveRows = db
+            .selectFrom(tableName as "clinics")
+            .where("deleted_at", "is", null)
+            .where("is_deleted", "is not", true);
 
-      const newRecords = await applyClinicScope(
-        selection
-          ? createdRows.select(selection as unknown as "id")
-          : createdRows.selectAll(),
-        server_table_name,
-        hubClinicIds,
-        includeNullClinic,
-      ).execute();
+        const live = await applyClinicScope(
+            // Cast for the same reason as the table name above: the projection is
+            // resolved at runtime, which the static schema cannot express.
+            selection
+                ? liveRows.select(selection as unknown as "id")
+                : liveRows.selectAll(),
+            tableName,
+            hubClinicIds,
+            includeNullClinic,
+        ).execute();
 
-      // Query for records updated since last sync (but created before)
-      const modifiedRows = db
-        .selectFrom(server_table_name)
-        .where("last_modified", ">", lastSyncDate)
-        .where("server_created_at", "<", lastSyncDate)
-        .where("deleted_at", "is", null)
-        .where("is_deleted", "=", false);
-
-      const updatedRecords = await applyClinicScope(
-        selection
-          ? modifiedRows.select(selection as unknown as "id")
-          : modifiedRows.selectAll(),
-        server_table_name,
-        hubClinicIds,
-        includeNullClinic,
-      ).execute();
-
-      // Query for records deleted since last sync
-      const deletedRecords =
-        lastSyncedAt === 0
-          ? []
-          : await applyClinicScope(
-              db
-                .selectFrom(server_table_name)
-                .where("deleted_at", ">", lastSyncDate)
-                .where("is_deleted", "=", true)
+        const removed = await applyClinicScope(
+            db
+                .selectFrom(tableName as "clinics")
+                .where((eb) =>
+                    eb.or([eb("is_deleted", "=", true), eb("deleted_at", "is not", null)]),
+                )
                 .select("id"),
-              server_table_name,
-              hubClinicIds,
-              includeNullClinic,
+            tableName,
+            hubClinicIds,
+            includeNullClinic,
+        ).execute();
+
+        return createDeltaData(
+            [],
+            normalizeCivilDates(tableName, live),
+            removed.map((record: { id: string }) => record.id),
+        );
+    };
+
+    /**
+     * Get the delta records for the last synced at time
+     * TODO: if lastSyncedAt is 0, no deleted records should be returned
+     * @param lastSyncedAt
+     * @returns
+     */
+    export const getDeltaRecords = async (
+        lastSyncedAt: number,
+        peerType: Device.DeviceTypeT,
+        caller: RequestCaller,
+    ): Promise<DBChangeSet> => {
+        /**
+         * Determine what gets pushed to the client. Only authenticated device
+         * callers (sync hubs) receive the hub entity set — a user caller claiming
+         * peerType "sync_hub" is treated as a regular user peer.
+         */
+        const isDeviceHub = peerType === "sync_hub" && "device" in caller;
+        const ENTITIES_TO_PUSH_TO_CLIENT = isDeviceHub
+            ? ENTITIES_TO_PUSH_TO_HUB
+            : ENTITIES_TO_PUSH_TO_MOBILE;
+        const result: DBChangeSet = {};
+
+        /**
+         * Clinic scope for pulls: hub devices receive data for their assigned
+         * clinics; user callers only for clinics where they hold
+         * can_view_history. Null means unrestricted (never the case for users).
+         */
+        const hubClinicIds: string[] | null = isDeviceHub
+            ? ((caller.device.clinic_ids as unknown as string[]) ?? null)
+            : "user" in caller
+                ? await UserClinicPermissions.API.getClinicIdsWithPermission(
+                    (caller as { user: { id: string } }).user.id,
+                    "can_view_history",
+                )
+                : null;
+
+        // User peers also receive records with no clinic assignment; hubs
+        // keep the strict clinic filter.
+        const includeNullClinic = !isDeviceHub;
+
+        const clientLastSyncDate = new Date(lastSyncedAt);
+        const now = new Date();
+
+        // Apply history limit if MAX_HISTORY_DAYS_SYNC is set
+        const maxHistoryDays = getMaxHistoryDaysSync();
+        let effectiveLastSyncDate = clientLastSyncDate;
+
+        if (maxHistoryDays !== null) {
+            const cutoffDate = new Date(
+                now.getTime() - maxHistoryDays * 24 * 60 * 60 * 1000,
+            );
+            // Use the more recent date between client's last sync and the cutoff
+            effectiveLastSyncDate =
+                clientLastSyncDate < cutoffDate ? cutoffDate : clientLastSyncDate;
+        }
+
+        for (const entity of ENTITIES_TO_PUSH_TO_CLIENT) {
+            // It can happen that the server table name is different from the mobile table name
+            // This just ensures we do the correct mapping. Often the name is the same.
+            const server_table_name = entity.Table.name;
+            const mobile_table_name = entity.Table.mobileName;
+            const always_push_to_mobile =
+                entity.Table?.ALWAYS_PUSH_TO_MOBILE || false;
+
+            // Strict fork policy: user peers never receive the users table. Hub
+            // devices do, but password hashes are stripped on every path below.
+            if (server_table_name === "users" && !isDeviceHub) continue;
+
+            // Replicated whole, so the watermark never applies to it.
+            if (FULL_SNAPSHOT_TABLES.has(server_table_name)) {
+                const snapshot = await getFullSnapshot(
+                    server_table_name,
+                    hubClinicIds,
+                    peerType,
+                    includeNullClinic,
+                );
+                // Never ship password hashes, whatever the path.
+                result[mobile_table_name] =
+                    server_table_name === "users"
+                        ? {
+                            ...snapshot,
+                            updated: snapshot.updated.map(
+                                ({hashed_password: _hashed_password, ...rest}) => rest,
+                            ),
+                        }
+                        : snapshot;
+                continue;
+            }
+
+            // Configuration entities should always sync full history, not limited by MAX_HISTORY_DAYS_SYNC
+            const isExemptFromHistoryLimit =
+                EXEMPT_FROM_HISTORY_LIMIT.includes(mobile_table_name);
+
+            // TODO: Implementation logic for always_push_to_mobile needs to be thought out first.
+            // let lastSyncDate = always_push_to_mobile ? now : effectiveLastSyncDate;
+            let lastSyncDate = isExemptFromHistoryLimit
+                ? clientLastSyncDate
+                : effectiveLastSyncDate;
+
+            // Held on the delta path too, so dropping a table out of
+            // FULL_SNAPSHOT_TABLES cannot quietly widen what a device receives.
+            const selection = syncSelection(server_table_name, peerType);
+
+            // Query for new records created at or after last sync.
+            // Using >= to avoid missing records created exactly at the boundary timestamp.
+            const createdRows = db
+                .selectFrom(server_table_name)
+                .where("server_created_at", ">=", lastSyncDate)
+                .where("deleted_at", "is", null)
+                .where("is_deleted", "=", false);
+
+            const newRecords = await applyClinicScope(
+                selection
+                    ? createdRows.select(selection as unknown as "id")
+                    : createdRows.selectAll(),
+                server_table_name,
+                hubClinicIds,
+                includeNullClinic,
             ).execute();
 
-      // Never ship password hashes to sync peers.
-      const stripSecrets = (rows: Record<string, any>[]) =>
-        server_table_name === "users"
-          ? rows.map(({ hashed_password: _hashed_password, ...rest }) => rest)
-          : rows;
+            // Query for records updated since last sync (but created before)
+            const modifiedRows = db
+                .selectFrom(server_table_name)
+                .where("last_modified", ">", lastSyncDate)
+                .where("server_created_at", "<", lastSyncDate)
+                .where("deleted_at", "is", null)
+                .where("is_deleted", "=", false);
 
-      const deltaData = createDeltaData(
-        normalizeCivilDates(server_table_name, stripSecrets(newRecords)),
-        normalizeCivilDates(server_table_name, stripSecrets(updatedRecords)),
-        deletedRecords.map((record: { id: string }) => record.id),
-      );
+            const updatedRecords = await applyClinicScope(
+                selection
+                    ? modifiedRows.select(selection as unknown as "id")
+                    : modifiedRows.selectAll(),
+                server_table_name,
+                hubClinicIds,
+                includeNullClinic,
+            ).execute();
 
-      // Add records to result
-      result[mobile_table_name] = deltaData;
-    }
+            // Query for records deleted since last sync
+            const deletedRecords =
+                lastSyncedAt === 0
+                    ? []
+                    : await applyClinicScope(
+                        db
+                            .selectFrom(server_table_name)
+                            .where("deleted_at", ">", lastSyncDate)
+                            .where("is_deleted", "=", true)
+                            .select("id"),
+                        server_table_name,
+                        hubClinicIds,
+                        includeNullClinic,
+                    ).execute();
 
-    // TODO: Pull out these table right up there near SyncableEntity definitions as a down only list of tables.
-    // Replicated whole rather than as a delta. Neither table carries
-    // `server_created_at` or `is_deleted`, so neither can join the loop above
-    // to pick up FULL_SNAPSHOT_TABLES — yet both need it: a schema migration
-    // creates them empty on the device, and a delta offers each row once.
-    //
-    // Everything goes in `updated`, as getFullSnapshot does: WatermelonDB
-    // creates a record it is asked to update but does not have.
-    //
-    // User callers only ever receive their OWN permission rows; device hubs
-    // receive the clinic-scoped set.
-    const ucpBase = db.selectFrom("user_clinic_permissions");
-    const ucpOwnOnly =
-      !isDeviceHub && "user" in caller
-        ? ucpBase.where(
-            "user_id",
-            "=",
-            (caller as { user: { id: string } }).user.id,
-          )
-        : ucpBase;
-    result["user_clinic_permissions"] = createDeltaData(
-      [],
-      await applyClinicScope(
-        ucpOwnOnly.selectAll(),
-        "user_clinic_permissions",
-        hubClinicIds,
-        includeNullClinic,
-      ).execute(),
-      [], // THERE are no deleted records. Any record that is gone, is just gone.
-    );
+            // Never ship password hashes to sync peers.
+            const stripSecrets = (rows: Record<string, any>[]) =>
+                server_table_name === "users"
+                    ? rows.map(({hashed_password: _hashed_password, ...rest}) => rest)
+                    : rows;
 
-    // Unscoped by design: devices scope app_config rows on read.
-    result["app_config"] = createDeltaData(
-      [],
-      await db.selectFrom("app_config").selectAll().execute(),
-      [], // THERE are no deleted records. Any record that is gone, is just gone.
-    );
-
-    return result;
-  };
-
-  /**
-   * Checks whether a record is authorized for a hub to push, based on
-   * the record's clinic association and the hub's authorized clinic IDs.
-   * Returns true if the table has no direct clinic column (indirectly associated).
-   */
-  function isRecordAuthorizedForClinic(
-    record: Record<string, any>,
-    tableName: string,
-    authorizedClinicIds: Set<string>,
-  ): boolean {
-    const clinicColumn = CLINIC_COLUMN_BY_TABLE[tableName];
-    if (!clinicColumn) return true;
-
-    const recordClinicId = record[clinicColumn];
-    // Null/undefined clinic — allow (e.g. patients with no primary_clinic_id yet)
-    if (!recordClinicId) return true;
-
-    return authorizedClinicIds.has(recordClinicId);
-  }
-
-  /**
-   * Persist the delta data from the client.
-   *
-   * **Clock-skew assumption**: Each model's upsert uses a WHERE guard
-   * (`excluded.updated_at > <table>.updated_at`) to reject stale records.
-   * `excluded.updated_at` is the *client-provided* timestamp from the INSERT
-   * VALUES clause, while the stored value may be either client-provided or
-   * server-set (`now()`) depending on the model. This means a client whose
-   * clock is significantly behind the server could have legitimate updates
-   * silently dropped. Callers (mobile apps / hubs) should keep their clocks
-   * reasonably synchronised (e.g. via NTP).
-   *
-   * @param entity
-   * @param deltaData
-   */
-  export type PushOutcome = {
-    accepted: number;
-    rejected: Record<string, string[]>;
-    byTable: Record<string, { accepted: number; rejected: number }>;
-  };
-
-  /**
-   * Entities whose upsert return value has been verified to distinguish an
-   * applied write from a guard rejection.
-   *
-   * Restricted to what mobile pushes. The hub-only additions each return
-   * something `classifyUpsertResult` would read wrongly: `device_pin_codes` is
-   * a deliberate no-op returning undefined (reported as rejected, so a client
-   * would keep the record pending forever), and `drug_catalogue` returns an
-   * un-run Effect — an object with no row count, reported as accepted for a
-   * write that never happened. Both are out of scope here; excluding them keeps
-   * PushOutcome honest about what it can speak to.
-   */
-  const REPORTABLE_TABLES: ReadonlySet<string> = new Set(
-    ENTITIES_TO_PULL_FROM_MOBILE.map((e) => e.Table.name),
-  );
-
-  export const persistClientChanges = async (
-    data: PushRequest,
-    peerType: Device.DeviceTypeT,
-    caller: RequestCaller,
-  ): Promise<PushOutcome> => {
-    // Hub peers can push a wider set of entities than mobile devices
-    const isHub = peerType === "sync_hub";
-    const entitiesToPull = isHub
-      ? ENTITIES_TO_PULL_FROM_HUB
-      : ENTITIES_TO_PULL_FROM_MOBILE;
-    const tableModelMap: Record<
-      string,
-      (typeof ENTITIES_TO_PULL_FROM_HUB)[number]
-    > = isHub ? hubPushTableNameModelMap : pushTableNameModelMap;
-
-    // Only authenticated device callers get the hub entity set
-    const isDeviceHub = isHub && "device" in caller;
-
-    // Hub authorization: build a set of allowed clinic IDs for fast lookups
-    const hubAuthorizedClinicIds: Set<string> | null =
-      isDeviceHub
-        ? new Set((caller.device.clinic_ids as unknown as string[]) ?? [])
-        : null;
-
-    /**
-     * User authorization: clinic scope derived from the caller's permissions.
-     * Different tables require different clinic-level permissions, mirroring
-     * the mobile client's own operation gates. Records outside the scope are
-     * skipped (logged) instead of failing the whole sync, because clients
-     * have no rejected-ids handling and would retry forever.
-     */
-    const USER_PUSH_PERMISSION_BY_TABLE: Record<string, UserClinicPermissions.UserPermissionsT> =
-      {
-        patients: "can_register_patients",
-        prescriptions: "can_prescribe_medications",
-        prescription_items: "can_prescribe_medications",
-        dispensing_records: "can_dispense_medications",
-      };
-    const userScopeCache = new Map<string, Set<string> | null>();
-    const getUserScope = async (
-      tableName: string,
-    ): Promise<Set<string> | null> => {
-      if (isDeviceHub || !("user" in caller)) return null;
-      if (userScopeCache.has(tableName)) {
-        return userScopeCache.get(tableName) ?? null;
-      }
-      const permission =
-        USER_PUSH_PERMISSION_BY_TABLE[tableName] ?? "can_edit_records";
-      const ids = await UserClinicPermissions.API.getClinicIdsWithPermission(
-        (caller as { user: { id: string } }).user.id,
-        permission,
-      );
-      const set = new Set(ids);
-      userScopeCache.set(tableName, set);
-      return set;
-    };
-
-    /**
-     * Resolve the owning clinic of a record for push authorization,
-     * following patient/visit indirection where needed. Returns undefined
-     * when the record does not exist.
-     */
-    const resolveRecordClinicId = async (
-      tableName: string,
-      record: Record<string, any>,
-    ): Promise<string | null | undefined> => {
-      const clinicColumn = CLINIC_COLUMN_BY_TABLE[tableName];
-      if (clinicColumn) return record[clinicColumn] ?? null;
-      if (INDIRECT_PATIENT_TABLES.has(tableName) && record.patient_id) {
-        const row = await db
-          .selectFrom("patients")
-          .select("primary_clinic_id")
-          .where("id", "=", record.patient_id)
-          .executeTakeFirst();
-        return row ? (row.primary_clinic_id ?? null) : undefined;
-      }
-      if (INDIRECT_VISIT_TABLES.has(tableName) && record.visit_id) {
-        const row = await db
-          .selectFrom("visits")
-          .select("clinic_id")
-          .where("id", "=", record.visit_id)
-          .executeTakeFirst();
-        return row ? (row.clinic_id ?? null) : undefined;
-      }
-      return null;
-    };
-
-    const outcome: PushOutcome = { accepted: 0, rejected: {}, byTable: {} };
-
-    /**
-     * Record one record's fate, keyed by the name the CLIENT knows the table
-     * by. The client feeds `rejected` straight into WatermelonDB's
-     * `markLocalChangesAsSynced`, which resolves collections by mobile name, so
-     * keying this by the server name would silently protect nothing.
-     */
-    const note = (mobileTable: string, id: string, accepted: boolean) => {
-      outcome.byTable[mobileTable] ??= { accepted: 0, rejected: 0 };
-      if (accepted) {
-        outcome.accepted += 1;
-        outcome.byTable[mobileTable].accepted += 1;
-      } else {
-        outcome.byTable[mobileTable].rejected += 1;
-        (outcome.rejected[mobileTable] ??= []).push(id);
-      }
-    };
-
-    // Warm the schema-driven date-column map before iterating records — the
-    // coercion below depends on it. Cached after the first call.
-    await loadDateColumnsByTable();
-
-    // Process the delta data from the client.
-    // Iterate over the entity list (not Object.entries) to guarantee
-    // dependency order: patients → patient_additional_attributes → visits → events → …
-    for (const entity of entitiesToPull) {
-      const tableName = entity.Table.name;
-      // `Device.Table` declares no mobileName; falling back to the server name
-      // keeps its records out of an `outcome.rejected["undefined"]` bucket.
-      const mobileName = entity.Table.mobileName ?? tableName;
-      const reportable = REPORTABLE_TABLES.has(tableName);
-      const newDeltaJson = (data as Record<string, DeltaData>)[tableName];
-      if (!newDeltaJson) {
-        continue;
-      }
-      Logger.log(`Processing table: ${tableName}`);
-      // Get the entity delta values with defaults
-      const deltaData = {
-        created: newDeltaJson?.created || [],
-        updated: newDeltaJson?.updated || [],
-        deleted: newDeltaJson?.deleted || [],
-      };
-
-      const knownColumns = new Set(
-        Object.keys(tableModelMap[tableName].Table.columns),
-      );
-
-      for (const record of deltaData.created.concat(deltaData.updated)) {
-        // Strip unknown columns (e.g. WatermelonDB's _status, _changed) and
-        // convert raw epoch timestamps to ISO strings so PostgreSQL can parse them.
-        const cleaned = Object.fromEntries(
-          Object.entries(record)
-            .filter(([key]) => {
-              if (knownColumns.has(key)) return true;
-              Logger.warn(
-                `[sync] Ignoring unknown column "${key}" for table "${tableName}"`,
-              );
-              return false;
-            })
-            .map(([key, value]) => {
-              // Only coerce numeric values into ISO strings on actual date
-              // columns. Without the column gate, 10-13 digit phone numbers
-              // / government IDs / external patient IDs trip the epoch regex
-              // and overwrite their text columns with ISO timestamps.
-              if (isDateColumn(tableName, key) && isEpochTimestamp(value)) {
-                Logger.warn(
-                  `[sync] Converting epoch timestamp in "${tableName}.${key}": ${value}`,
-                );
-                return [key, toSafeDateString(value)];
-              }
-              // Mobile clients may send 0/"0" for empty date fields — coerce to null
-              if (
-                (value === 0 || value === "0") &&
-                isDateColumn(tableName, key)
-              ) {
-                Logger.warn(
-                  `[sync] Converting zero date to null in "${tableName}.${key}"`,
-                );
-                return [key, null];
-              }
-              return [key, value];
-            }),
-        );
-
-        // Hub authorization: reject records targeting clinics the hub isn't assigned to
-        if (
-          hubAuthorizedClinicIds &&
-          !isRecordAuthorizedForClinic(
-            cleaned,
-            tableName,
-            hubAuthorizedClinicIds,
-          )
-        ) {
-          const clinicColumn = CLINIC_COLUMN_BY_TABLE[tableName];
-          Logger.warn(
-            `[sync] Hub not authorized to push "${tableName}" record ${cleaned.id} — ` +
-              `clinic ${cleaned[clinicColumn!]} not in hub's authorized clinics`,
-          );
-          if (reportable) note(mobileName, String(cleaned.id), false);
-          continue;
-        }
-
-        // User authorization: skip (do not apply, do not fail the sync)
-        // records for clinics the caller has no write permission for.
-        const userScope = await getUserScope(tableName);
-        if (userScope) {
-          const recordClinicId = await resolveRecordClinicId(
-            tableName,
-            cleaned,
-          );
-          if (recordClinicId && !userScope.has(recordClinicId)) {
-            Logger.warn(
-              `[sync] User not authorized to push "${tableName}" record ${cleaned.id} — ` +
-                `clinic ${recordClinicId} outside caller's ${USER_PUSH_PERMISSION_BY_TABLE[tableName] ?? "can_edit_records"} scope; skipping`,
+            const deltaData = createDeltaData(
+                normalizeCivilDates(server_table_name, stripSecrets(newRecords)),
+                normalizeCivilDates(server_table_name, stripSecrets(updatedRecords)),
+                deletedRecords.map((record: { id: string }) => record.id),
             );
-            if (reportable) note(mobileName, String(cleaned.id), false);
-            continue;
-          }
+
+            // Add records to result
+            result[mobile_table_name] = deltaData;
         }
 
-        let upsertResult: unknown;
-        try {
-          upsertResult = await tableModelMap[tableName].Sync.upsertFromDelta(
-            cleaned as any,
-            caller,
-          );
-        } catch (error) {
-          const code = recordLevelErrorCode(error);
-          // Skipping is only safe when the client will be told, since it then
-          // keeps the record pending. On a table whose rejections it never sees,
-          // dropping the record here would lose it outright.
-          if (code === null || !reportable) throw error;
-          Logger.error({
-            msg:
-              `[sync] Postgres rejected ${tableName} record ${cleaned.id} (${code}) — ` +
-              `skipping it so the rest of the push can land`,
-            error,
-          });
-          note(mobileName, String(cleaned.id), false);
-          continue;
-        }
-        if (reportable) {
-          note(
-            mobileName,
-            String(cleaned.id),
-            classifyUpsertResult(upsertResult),
-          );
-        }
-      }
-
-      for (const id of deltaData.deleted) {
-        // User authorization for deletes: resolve the record's clinic before
-        // deleting and skip when out of scope.
-        if (!isDeviceHub && "user" in caller) {
-          const userScope = await getUserScope(tableName);
-          if (userScope) {
-            const existing = await db
-              .selectFrom(tableName as any)
-              .selectAll()
-              .where("id", "=", id)
-              .executeTakeFirst();
-            if (existing) {
-              const recordClinicId = await resolveRecordClinicId(
-                tableName,
-                existing as Record<string, any>,
-              );
-              if (recordClinicId && !userScope.has(recordClinicId)) {
-                Logger.warn(
-                  `[sync] User not authorized to delete "${tableName}" record ${id} — clinic ${recordClinicId} outside caller's scope; skipping`,
-                );
-                if (reportable) note(mobileName, id, false);
-                continue;
-              }
-            }
-          }
-        }
-        try {
-          await tableModelMap[tableName].Sync.deleteFromDelta(id);
-        } catch (error) {
-          const code = recordLevelErrorCode(error);
-          // Same rule as the upsert above. Reporting the id keeps the client's
-          // tombstone alive: WatermelonDB's `destroyDeletedRecords` filters the
-          // deleted bucket by `rejectedIds`, so the deletion is retried.
-          if (code === null || !reportable) throw error;
-          Logger.error({
-            msg:
-              `[sync] Postgres rejected the deletion of ${tableName} ${id} (${code}) — ` +
-              `skipping it so the rest of the push can land`,
-            error,
-          });
-          note(mobileName, id, false);
-        }
-      }
-    }
-
-    // Warn about any tables the client sent that we don't recognize
-    const knownTableNames = new Set(entitiesToPull.map((e) => e.Table.name));
-    for (const tableName of Object.keys(data)) {
-      if (!knownTableNames.has(tableName)) {
-        Logger.warn(
-          `[sync] Table "${tableName}" not found in accepted entities for ${isHub ? "hub" : "mobile"} - ignoring`,
+        // TODO: Pull out these table right up there near SyncableEntity definitions as a down only list of tables.
+        // Replicated whole rather than as a delta. Neither table carries
+        // `server_created_at` or `is_deleted`, so neither can join the loop above
+        // to pick up FULL_SNAPSHOT_TABLES — yet both need it: a schema migration
+        // creates them empty on the device, and a delta offers each row once.
+        //
+        // Everything goes in `updated`, as getFullSnapshot does: WatermelonDB
+        // creates a record it is asked to update but does not have.
+        //
+        // User callers only ever receive their OWN permission rows; device hubs
+        // receive the clinic-scoped set.
+        const ucpBase = db.selectFrom("user_clinic_permissions");
+        const ucpOwnOnly =
+            !isDeviceHub && "user" in caller
+                ? ucpBase.where(
+                    "user_id",
+                    "=",
+                    (caller as { user: { id: string } }).user.id,
+                )
+                : ucpBase;
+        result["user_clinic_permissions"] = createDeltaData(
+            [],
+            await applyClinicScope(
+                ucpOwnOnly.selectAll(),
+                "user_clinic_permissions",
+                hubClinicIds,
+                includeNullClinic,
+            ).execute(),
+            [], // THERE are no deleted records. Any record that is gone, is just gone.
         );
-      }
+
+        // Unscoped by design: devices scope app_config rows on read.
+        result["app_config"] = createDeltaData(
+            [],
+            await db.selectFrom("app_config").selectAll().execute(),
+            [], // THERE are no deleted records. Any record that is gone, is just gone.
+        );
+
+        return result;
+    };
+
+    /**
+     * Checks whether a record is authorized for a hub to push, based on
+     * the record's clinic association and the hub's authorized clinic IDs.
+     * Returns true if the table has no direct clinic column (indirectly associated).
+     */
+    function isRecordAuthorizedForClinic(
+        record: Record<string, any>,
+        tableName: string,
+        authorizedClinicIds: Set<string>,
+    ): boolean {
+        const clinicColumn = CLINIC_COLUMN_BY_TABLE[tableName];
+        if (!clinicColumn) return true;
+
+        const recordClinicId = record[clinicColumn];
+        // Null/undefined clinic — allow (e.g. patients with no primary_clinic_id yet)
+        if (!recordClinicId) return true;
+
+        return authorizedClinicIds.has(recordClinicId);
     }
 
-    Logger.log("Finished persisting client changes");
-    return outcome;
-  };
+    /**
+     * Persist the delta data from the client.
+     *
+     * **Clock-skew assumption**: Each model's upsert uses a WHERE guard
+     * (`excluded.updated_at > <table>.updated_at`) to reject stale records.
+     * `excluded.updated_at` is the *client-provided* timestamp from the INSERT
+     * VALUES clause, while the stored value may be either client-provided or
+     * server-set (`now()`) depending on the model. This means a client whose
+     * clock is significantly behind the server could have legitimate updates
+     * silently dropped. Callers (mobile apps / hubs) should keep their clocks
+     * reasonably synchronised (e.g. via NTP).
+     *
+     * @param entity
+     * @param deltaData
+     */
+    export type PushOutcome = {
+        accepted: number;
+        rejected: Record<string, string[]>;
+        byTable: Record<string, { accepted: number; rejected: number }>;
+    };
+
+    /**
+     * Entities whose upsert return value has been verified to distinguish an
+     * applied write from a guard rejection.
+     *
+     * Restricted to what mobile pushes. The hub-only additions each return
+     * something `classifyUpsertResult` would read wrongly: `device_pin_codes` is
+     * a deliberate no-op returning undefined (reported as rejected, so a client
+     * would keep the record pending forever), and `drug_catalogue` returns an
+     * un-run Effect — an object with no row count, reported as accepted for a
+     * write that never happened. Both are out of scope here; excluding them keeps
+     * PushOutcome honest about what it can speak to.
+     */
+    const REPORTABLE_TABLES: ReadonlySet<string> = new Set(
+        ENTITIES_TO_PULL_FROM_MOBILE.map((e) => e.Table.name),
+    );
+
+    export const persistClientChanges = async (
+        data: PushRequest,
+        peerType: Device.DeviceTypeT,
+        caller: RequestCaller,
+    ): Promise<PushOutcome> => {
+        // Hub peers can push a wider set of entities than mobile devices
+        const isHub = peerType === "sync_hub";
+        const entitiesToPull = isHub
+            ? ENTITIES_TO_PULL_FROM_HUB
+            : ENTITIES_TO_PULL_FROM_MOBILE;
+        const tableModelMap: Record<
+            string,
+            (typeof ENTITIES_TO_PULL_FROM_HUB)[number]
+        > = isHub ? hubPushTableNameModelMap : pushTableNameModelMap;
+
+        // Only authenticated device callers get the hub entity set
+        const isDeviceHub = isHub && "device" in caller;
+
+        // Hub authorization: build a set of allowed clinic IDs for fast lookups
+        const hubAuthorizedClinicIds: Set<string> | null =
+            isDeviceHub
+                ? new Set((caller.device.clinic_ids as unknown as string[]) ?? [])
+                : null;
+
+        /**
+         * User authorization: clinic scope derived from the caller's permissions.
+         * Different tables require different clinic-level permissions, mirroring
+         * the mobile client's own operation gates. Records outside the scope are
+         * skipped (logged) instead of failing the whole sync, because clients
+         * have no rejected-ids handling and would retry forever.
+         */
+        const USER_PUSH_PERMISSION_BY_TABLE: Record<string, UserClinicPermissions.UserPermissionsT> =
+            {
+                patients: "can_register_patients",
+                prescriptions: "can_prescribe_medications",
+                prescription_items: "can_prescribe_medications",
+                dispensing_records: "can_dispense_medications",
+            };
+        const userScopeCache = new Map<string, Set<string> | null>();
+        const getUserScope = async (
+            tableName: string,
+        ): Promise<Set<string> | null> => {
+            if (isDeviceHub || !("user" in caller)) return null;
+            if (userScopeCache.has(tableName)) {
+                return userScopeCache.get(tableName) ?? null;
+            }
+            const permission =
+                USER_PUSH_PERMISSION_BY_TABLE[tableName] ?? "can_edit_records";
+            const ids = await UserClinicPermissions.API.getClinicIdsWithPermission(
+                (caller as { user: { id: string } }).user.id,
+                permission,
+            );
+            const set = new Set(ids);
+            userScopeCache.set(tableName, set);
+            return set;
+        };
+
+        /**
+         * Resolve the owning clinic of a record for push authorization,
+         * following patient/visit indirection where needed. Returns undefined
+         * when the record does not exist.
+         */
+        const resolveRecordClinicId = async (
+            tableName: string,
+            record: Record<string, any>,
+        ): Promise<string | null | undefined> => {
+            const clinicColumn = CLINIC_COLUMN_BY_TABLE[tableName];
+            if (clinicColumn) return record[clinicColumn] ?? null;
+            if (INDIRECT_PATIENT_TABLES.has(tableName) && record.patient_id) {
+                const row = await db
+                    .selectFrom("patients")
+                    .select("primary_clinic_id")
+                    .where("id", "=", record.patient_id)
+                    .executeTakeFirst();
+                return row ? (row.primary_clinic_id ?? null) : undefined;
+            }
+            if (INDIRECT_VISIT_TABLES.has(tableName) && record.visit_id) {
+                const row = await db
+                    .selectFrom("visits")
+                    .select("clinic_id")
+                    .where("id", "=", record.visit_id)
+                    .executeTakeFirst();
+                return row ? (row.clinic_id ?? null) : undefined;
+            }
+            return null;
+        };
+
+        const outcome: PushOutcome = {accepted: 0, rejected: {}, byTable: {}};
+
+        /**
+         * Record one record's fate, keyed by the name the CLIENT knows the table
+         * by. The client feeds `rejected` straight into WatermelonDB's
+         * `markLocalChangesAsSynced`, which resolves collections by mobile name, so
+         * keying this by the server name would silently protect nothing.
+         */
+        const note = (mobileTable: string, id: string, accepted: boolean) => {
+            outcome.byTable[mobileTable] ??= {accepted: 0, rejected: 0};
+            if (accepted) {
+                outcome.accepted += 1;
+                outcome.byTable[mobileTable].accepted += 1;
+            } else {
+                outcome.byTable[mobileTable].rejected += 1;
+                (outcome.rejected[mobileTable] ??= []).push(id);
+            }
+        };
+
+        // Warm the schema-driven date-column map before iterating records — the
+        // coercion below depends on it. Cached after the first call.
+        await loadDateColumnsByTable();
+
+        // Process the delta data from the client.
+        // Iterate over the entity list (not Object.entries) to guarantee
+        // dependency order: patients → patient_additional_attributes → visits → events → …
+        for (const entity of entitiesToPull) {
+            const tableName = entity.Table.name;
+            // `Device.Table` declares no mobileName; falling back to the server name
+            // keeps its records out of an `outcome.rejected["undefined"]` bucket.
+            const mobileName = entity.Table.mobileName ?? tableName;
+            const reportable = REPORTABLE_TABLES.has(tableName);
+            const newDeltaJson = (data as Record<string, DeltaData>)[tableName];
+            if (!newDeltaJson) {
+                continue;
+            }
+            Logger.log(`Processing table: ${tableName}`);
+            // Get the entity delta values with defaults
+            const deltaData = {
+                created: newDeltaJson?.created || [],
+                updated: newDeltaJson?.updated || [],
+                deleted: newDeltaJson?.deleted || [],
+            };
+
+            const knownColumns = new Set(
+                Object.keys(tableModelMap[tableName].Table.columns),
+            );
+
+            for (const record of deltaData.created.concat(deltaData.updated)) {
+                // Strip unknown columns (e.g. WatermelonDB's _status, _changed) and
+                // convert raw epoch timestamps to ISO strings so PostgreSQL can parse them.
+                const cleaned = Object.fromEntries(
+                    Object.entries(record)
+                        .filter(([key]) => {
+                            if (knownColumns.has(key)) return true;
+                            Logger.warn(
+                                `[sync] Ignoring unknown column "${key}" for table "${tableName}"`,
+                            );
+                            return false;
+                        })
+                        .map(([key, value]) => {
+                            // Only coerce numeric values into ISO strings on actual date
+                            // columns. Without the column gate, 10-13 digit phone numbers
+                            // / government IDs / external patient IDs trip the epoch regex
+                            // and overwrite their text columns with ISO timestamps.
+                            if (isDateColumn(tableName, key) && isEpochTimestamp(value)) {
+                                Logger.warn(
+                                    `[sync] Converting epoch timestamp in "${tableName}.${key}": ${value}`,
+                                );
+                                return [key, toSafeDateString(value)];
+                            }
+                            // Mobile clients may send 0/"0" for empty date fields — coerce to null
+                            if (
+                                (value === 0 || value === "0") &&
+                                isDateColumn(tableName, key)
+                            ) {
+                                Logger.warn(
+                                    `[sync] Converting zero date to null in "${tableName}.${key}"`,
+                                );
+                                return [key, null];
+                            }
+                            return [key, value];
+                        }),
+                );
+
+                // Hub authorization: reject records targeting clinics the hub isn't assigned to
+                if (
+                    hubAuthorizedClinicIds &&
+                    !isRecordAuthorizedForClinic(
+                        cleaned,
+                        tableName,
+                        hubAuthorizedClinicIds,
+                    )
+                ) {
+                    const clinicColumn = CLINIC_COLUMN_BY_TABLE[tableName];
+                    Logger.warn(
+                        `[sync] Hub not authorized to push "${tableName}" record ${cleaned.id} — ` +
+                        `clinic ${cleaned[clinicColumn!]} not in hub's authorized clinics`,
+                    );
+                    if (reportable) note(mobileName, String(cleaned.id), false);
+                    continue;
+                }
+
+                // User authorization: skip (do not apply, do not fail the sync)
+                // records for clinics the caller has no write permission for.
+                const userScope = await getUserScope(tableName);
+                if (userScope) {
+                    const recordClinicId = await resolveRecordClinicId(
+                        tableName,
+                        cleaned,
+                    );
+                    if (recordClinicId && !userScope.has(recordClinicId)) {
+                        Logger.warn(
+                            `[sync] User not authorized to push "${tableName}" record ${cleaned.id} — ` +
+                            `clinic ${recordClinicId} outside caller's ${USER_PUSH_PERMISSION_BY_TABLE[tableName] ?? "can_edit_records"} scope; skipping`,
+                        );
+                        if (reportable) note(mobileName, String(cleaned.id), false);
+                        continue;
+                    }
+                }
+
+                let upsertResult: unknown;
+                try {
+                    upsertResult = await tableModelMap[tableName].Sync.upsertFromDelta(
+                        cleaned as any,
+                        caller,
+                    );
+                } catch (error) {
+                    const code = recordLevelErrorCode(error);
+                    // Skipping is only safe when the client will be told, since it then
+                    // keeps the record pending. On a table whose rejections it never sees,
+                    // dropping the record here would lose it outright.
+                    if (code === null || !reportable) throw error;
+                    Logger.error({
+                        msg:
+                            `[sync] Postgres rejected ${tableName} record ${cleaned.id} (${code}) — ` +
+                            `skipping it so the rest of the push can land`,
+                        error,
+                    });
+                    note(mobileName, String(cleaned.id), false);
+                    continue;
+                }
+                if (reportable) {
+                    note(
+                        mobileName,
+                        String(cleaned.id),
+                        classifyUpsertResult(upsertResult),
+                    );
+                }
+            }
+
+            for (const id of deltaData.deleted) {
+                // User authorization for deletes: resolve the record's clinic before
+                // deleting and skip when out of scope.
+                if (!isDeviceHub && "user" in caller) {
+                    const userScope = await getUserScope(tableName);
+                    if (userScope) {
+                        const existing = await db
+                            .selectFrom(tableName as any)
+                            .selectAll()
+                            .where("id", "=", id)
+                            .executeTakeFirst();
+                        if (existing) {
+                            const recordClinicId = await resolveRecordClinicId(
+                                tableName,
+                                existing as Record<string, any>,
+                            );
+                            if (recordClinicId && !userScope.has(recordClinicId)) {
+                                Logger.warn(
+                                    `[sync] User not authorized to delete "${tableName}" record ${id} — clinic ${recordClinicId} outside caller's scope; skipping`,
+                                );
+                                if (reportable) note(mobileName, id, false);
+                                continue;
+                            }
+                        }
+                    }
+                }
+                try {
+                    await tableModelMap[tableName].Sync.deleteFromDelta(id);
+                } catch (error) {
+                    const code = recordLevelErrorCode(error);
+                    // Same rule as the upsert above. Reporting the id keeps the client's
+                    // tombstone alive: WatermelonDB's `destroyDeletedRecords` filters the
+                    // deleted bucket by `rejectedIds`, so the deletion is retried.
+                    if (code === null || !reportable) throw error;
+                    Logger.error({
+                        msg:
+                            `[sync] Postgres rejected the deletion of ${tableName} ${id} (${code}) — ` +
+                            `skipping it so the rest of the push can land`,
+                        error,
+                    });
+                    note(mobileName, id, false);
+                }
+            }
+        }
+
+        // Warn about any tables the client sent that we don't recognize
+        const knownTableNames = new Set(entitiesToPull.map((e) => e.Table.name));
+        for (const tableName of Object.keys(data)) {
+            if (!knownTableNames.has(tableName)) {
+                Logger.warn(
+                    `[sync] Table "${tableName}" not found in accepted entities for ${isHub ? "hub" : "mobile"} - ignoring`,
+                );
+            }
+        }
+
+        Logger.log("Finished persisting client changes");
+        return outcome;
+    };
 }
 
 export default Sync;

@@ -1,9 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { sql } from "kysely";
 import db from "@/db";
-import type Device from "./device";
+import type Device from "@/models/device";
 import type { RequestCaller } from "@/types";
-import UserClinicPermissions from "./user-clinic-permissions";
+import UserClinicPermissions from "@/models/user-clinic-permissions";
 import {
   resolveEntitiesForPeer,
   applyClinicScope,

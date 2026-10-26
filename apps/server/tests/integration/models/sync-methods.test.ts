@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { sql } from "kysely";
 import { v1 as uuidV1 } from "uuid";
-import { testDb } from "../setup";
+import { testDb } from "../../../../../tests/integration/setup.ts";
 
 vi.mock("@/db", () => ({ default: testDb }));
 
 import Sync, { isDateColumn, loadDateColumnsByTable } from "@/models/sync";
-import type { RequestCaller } from "@/types";
+import type { RequestCaller } from "@/types.ts";
 
 // Track IDs for cleanup in dependency order
 const createdIds: {
