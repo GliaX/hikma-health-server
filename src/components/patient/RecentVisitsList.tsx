@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Card,
   CardContent,
@@ -13,6 +12,7 @@ import {
 } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
 import { format } from "date-fns";
+import type { ReactNode } from "react";
 import type { VisitWithEvents } from "@/lib/server-functions/visits";
 import type Event from "@/models/event";
 import type { Pagination } from "@/lib/server-functions/builders";
@@ -24,7 +24,7 @@ type Props = {
   pagination: Pagination;
   onPageChange: (offset: number) => void;
   loading?: boolean;
-  headerAction?: React.ReactNode;
+  headerAction?: ReactNode;
 };
 
 /** Format a visit's check-in date for display. Returns "—" for null/missing/invalid. */

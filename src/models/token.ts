@@ -1,22 +1,27 @@
-import { Option } from "effect";
+import { createHash } from "node:crypto";
+import { Effect, Option } from "effect";
 import type {
   ColumnType,
+  Generated,
   Selectable,
+  Insertable,
+  Updateable,
 } from "kysely";
-import { createHash } from "crypto";
 import db from "@/db";
 import User from "./user";
 import { createServerOnlyFn } from "@tanstack/react-start";
 
-/**
- * Session tokens are stored hashed (SHA-256) at rest — a database leak no
- * longer yields usable session tokens. The plaintext bearer value is only
- * ever known to the client; lookups hash the presented token before querying.
- */
-export const hashToken = (token: string): string =>
-  createHash("sha256").update(token).digest("hex");
-
 namespace Token {
+  /**
+   * Session tokens are stored hashed (SHA-256) at rest — a database leak no
+   * longer yields usable session tokens. The plaintext bearer value is only
+   * ever known to the client; lookups hash the presented token before
+   * querying. The column is `token_hash` (see migration
+   * 20261001_security_token_hash_and_pin_reset).
+   */
+  export const hash = (token: string): string =>
+    createHash("sha256").update(token, "utf8").digest("hex");
+
   export type T = {
     user_id: string;
     token_hash: string;
@@ -41,16 +46,12 @@ namespace Token {
     export type TokensUpdate = Updateable<T>;
   }
 
-  /**
-   * Given a token, return a user if the token is valid
-   * @param {string} token - The token to validate
-   * @returns {Promise<Option.Option<User.T>>} - The user if the token is valid, null otherwise
-   */
+  /** None when the token is unknown or expired. */
   export const getUser = createServerOnlyFn(
     async (token: string): Promise<Option.Option<User.T>> => {
       let query = db.selectFrom(Table.name);
 
-      query = query.where("token_hash", "=", hashToken(token));
+      query = query.where("token_hash", "=", hash(token));
       query = query.where("expiry", ">", new Date().toISOString());
 
       const res = await query.select(["user_id"]).executeTakeFirst();
@@ -73,26 +74,16 @@ namespace Token {
     },
   );
 
-  /**
-   * Given a token, invalidate it
-   * @param {string} token - The token to invalidate
-   * @returns {Promise<void>} - Resolves when the token is invalidated
-   */
   export const invalidate = createServerOnlyFn(
     async (token: string): Promise<void> => {
       await db
         .deleteFrom(Table.name)
-        .where("token_hash", "=", hashToken(token))
+        .where("token_hash", "=", hash(token))
         .execute();
     },
   );
 
-  /**
-   * Create a new token for a user given their id
-   * @param {string} userId - The user's id
-   * @param {Date} expiry - The token's expiry date
-   * @returns {Promise<string>} - The new token
-   */
+  /** Returns the raw token; only its hash is stored. */
   export const create = createServerOnlyFn(
     async (userId: string, expiry: Date): Promise<string> => {
       const token = crypto.randomUUID();
@@ -100,7 +91,7 @@ namespace Token {
         .insertInto(Token.Table.name)
         .values({
           user_id: userId,
-          token_hash: hashToken(token),
+          token_hash: hash(token),
           expiry: expiry.toISOString(),
         })
         .execute();

@@ -33,15 +33,17 @@ import type Prescription from "@/models/prescription";
 import type PatientProblem from "@/models/patient-problem";
 import { useEffect, useState, useCallback } from "react";
 import { getAppointmentsByPatientId } from "@/lib/server-functions/appointments";
-import { getCurrentUser } from "@/lib/server-functions/auth";
 import type Clinic from "@/models/clinic";
 import type User from "@/models/user";
 import type { Pagination } from "@/lib/server-functions/builders";
 import { PatientVitalsCard } from "@/components/patient/PatientVitalsCard";
 import { RecentVisitsList } from "@/components/patient/RecentVisitsList";
+import { CreateVisitDialog } from "@/components/patient/CreateVisitDialog";
+import { getCurrentUser } from "@/lib/server-functions/auth";
 import { PrescriptionsList } from "@/components/patient/PrescriptionsList";
 import { PatientProblemsList } from "@/components/patient/PatientProblemsList";
-import { CreateVisitDialog } from "@/components/patient/CreateVisitDialog";
+import { parseCivilDate } from "@/lib/utils";
+import { Logger } from "@hikmahealth/js-utils";
 
 export const Route = createFileRoute("/app/patients/$id")({
   component: RouteComponent,
@@ -57,7 +59,6 @@ export const Route = createFileRoute("/app/patients/$id")({
 
     const result: {
       patient: Patient.EncodedT | null;
-      currentUser: User.EncodedT | null;
       vitals: PatientVital.EncodedT[];
       appointments: {
         appointment: Appointment.EncodedT;
@@ -69,17 +70,18 @@ export const Route = createFileRoute("/app/patients/$id")({
       visitsPagination: Pagination;
       prescriptions: Prescription.EncodedT[];
       prescriptionsPagination: Pagination;
+      prescriptionStatusCounts: Prescription.StatusCount[];
       problems: PatientProblem.EncodedT[];
       problemsPagination: Pagination;
     } = {
       patient: null,
-      currentUser: null,
       vitals: [],
       appointments: [],
       visits: [],
       visitsPagination: emptyPagination,
       prescriptions: [],
       prescriptionsPagination: emptyPagination,
+      prescriptionStatusCounts: [],
       problems: [],
       problemsPagination: emptyPagination,
     };
@@ -96,23 +98,21 @@ export const Route = createFileRoute("/app/patients/$id")({
 
       result.patient = patient;
 
-      // Fetch appointments, visits, prescriptions, problems, vitals, and current user in parallel
       const [
         appointmentsRes,
         visitsRes,
         prescriptionsRes,
         problemsRes,
         vitals,
-        currentUser,
       ] = await Promise.all([
         getAppointmentsByPatientId({ data: { patientId } }).catch((e) => {
-          console.error("Failed to fetch appointments:", e);
+          Logger.error({ msg: "Failed to fetch appointments:", e });
           return { data: [], error: e };
         }),
         getPatientVisits({
           data: { patientId, limit: 10, offset: 0, includeEvents: true },
         }).catch((e) => {
-          console.error("Failed to fetch visits:", e);
+          Logger.error({ msg: "Failed to fetch visits:", e });
           return {
             ok: false as const,
             error: {
@@ -124,7 +124,7 @@ export const Route = createFileRoute("/app/patients/$id")({
         getPatientPrescriptions({
           data: { patientId, limit: 10, offset: 0 },
         }).catch((e) => {
-          console.error("Failed to fetch prescriptions:", e);
+          Logger.error({ msg: "Failed to fetch prescriptions:", e });
           return {
             ok: false as const,
             error: {
@@ -136,7 +136,7 @@ export const Route = createFileRoute("/app/patients/$id")({
         getPatientProblems({
           data: { patientId, limit: 5, offset: 0 },
         }).catch((e) => {
-          console.error("Failed to fetch problems:", e);
+          Logger.error({ msg: "Failed to fetch problems:", e });
           return {
             ok: false as const,
             error: {
@@ -146,14 +146,12 @@ export const Route = createFileRoute("/app/patients/$id")({
           };
         }),
         getPatientVitals({ data: { patientId } }).catch((e) => {
-          console.error("Failed to fetch vitals:", e);
+          Logger.error({ msg: "Failed to fetch vitals:", e });
           return [] as PatientVital.EncodedT[];
         }),
-        getCurrentUser({ data: {} }).catch(() => null),
       ]);
 
       result.appointments = appointmentsRes.data || [];
-      result.currentUser = currentUser;
 
       const visitsData = Result.getOrElse(visitsRes, {
         items: [] as VisitWithEvents[],
@@ -164,10 +162,12 @@ export const Route = createFileRoute("/app/patients/$id")({
 
       const rxData = Result.getOrElse(prescriptionsRes, {
         items: [] as Prescription.EncodedT[],
+        statusCounts: [] as Prescription.StatusCount[],
         pagination: emptyPagination,
       });
       result.prescriptions = rxData.items;
       result.prescriptionsPagination = rxData.pagination;
+      result.prescriptionStatusCounts = rxData.statusCounts;
 
       const problemsData = Result.getOrElse(problemsRes, {
         items: [] as PatientProblem.EncodedT[],
@@ -180,7 +180,7 @@ export const Route = createFileRoute("/app/patients/$id")({
 
       return result;
     } catch (error) {
-      console.error("Failed to fetch patient:", error);
+      Logger.error({ msg: "Failed to fetch patient:", error });
       return result;
     }
   },
@@ -189,13 +189,13 @@ export const Route = createFileRoute("/app/patients/$id")({
 function RouteComponent() {
   const {
     patient,
-    currentUser,
     vitals: initialVitals,
     appointments,
     visits: initialVisits,
     visitsPagination: initialVisitsPag,
     prescriptions: initialPrescriptions,
     prescriptionsPagination: initialRxPag,
+    prescriptionStatusCounts: initialRxStatusCounts,
     problems: initialProblems,
     problemsPagination: initialProblemsPag,
   } = Route.useLoaderData();
@@ -204,21 +204,32 @@ function RouteComponent() {
   const router = useRouter();
   const patientId = params.id;
   const isEditing = !!patientId && patientId !== "new";
+  // Optional-chained: the `!patient` guard is further down, after the hooks, so
+  // this runs even when the patient failed to load.
+  const patientDateOfBirth = parseCivilDate(patient?.date_of_birth);
   const [mostRecentVital, setMostRecentVital] = useState<
     typeof PatientVital.PatientVitalSchema.Encoded | null
   >(null);
 
-  // Visits pagination state
   const [visits, setVisits] = useState(initialVisits);
   const [visitsPag, setVisitsPag] = useState(initialVisitsPag);
   const [visitsLoading, setVisitsLoading] = useState(false);
 
-  // Prescriptions pagination state
+  const [currentUser, setCurrentUser] = useState<Awaited<
+    ReturnType<typeof getCurrentUser>
+  > | null>(null);
+
+  useEffect(() => {
+    getCurrentUser()
+      .then(setCurrentUser)
+      .catch(() => setCurrentUser(null));
+  }, []);
+
   const [prescriptions, setPrescriptions] = useState(initialPrescriptions);
   const [rxPag, setRxPag] = useState(initialRxPag);
+  const [rxStatusCounts, setRxStatusCounts] = useState(initialRxStatusCounts);
   const [rxLoading, setRxLoading] = useState(false);
 
-  // Problems pagination state
   const [problems, setProblems] = useState(initialProblems);
   const [problemsPag, setProblemsPag] = useState(initialProblemsPag);
   const [problemsLoading, setProblemsLoading] = useState(false);
@@ -231,7 +242,8 @@ function RouteComponent() {
   useEffect(() => {
     setPrescriptions(initialPrescriptions);
     setRxPag(initialRxPag);
-  }, [initialPrescriptions, initialRxPag]);
+    setRxStatusCounts(initialRxStatusCounts);
+  }, [initialPrescriptions, initialRxPag, initialRxStatusCounts]);
 
   useEffect(() => {
     setProblems(initialProblems);
@@ -257,7 +269,7 @@ function RouteComponent() {
           setVisitsPag(res.data.pagination);
         }
       } catch (e) {
-        console.error("Failed to fetch visits page:", e);
+        Logger.error({ msg: "Failed to fetch visits page:", e });
       } finally {
         setVisitsLoading(false);
       }
@@ -276,9 +288,10 @@ function RouteComponent() {
         if (res.ok) {
           setPrescriptions(res.data.items);
           setRxPag(res.data.pagination);
+          setRxStatusCounts(res.data.statusCounts ?? []);
         }
       } catch (e) {
-        console.error("Failed to fetch prescriptions page:", e);
+        Logger.error({ msg: "Failed to fetch prescriptions page:", e });
       } finally {
         setRxLoading(false);
       }
@@ -299,7 +312,7 @@ function RouteComponent() {
           setProblemsPag(res.data.pagination);
         }
       } catch (e) {
-        console.error("Failed to fetch problems page:", e);
+        Logger.error({ msg: "Failed to fetch problems page:", e });
       } finally {
         setProblemsLoading(false);
       }
@@ -317,10 +330,11 @@ function RouteComponent() {
     });
   }
 
-  // Calculate age from date of birth
+  // The DOB is a civil date, so it is parsed from local parts to match the
+  // local getters below — see `parseCivilDate`.
   const calculateAge = (dob: Date | string | undefined) => {
-    if (!dob) return "Unknown";
-    const birthDate = new Date(dob);
+    const birthDate = parseCivilDate(dob);
+    if (!birthDate) return "Unknown";
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -333,7 +347,6 @@ function RouteComponent() {
     return age;
   };
 
-  // Get patient initials for avatar
   const getInitials = (givenName?: string, surname?: string) => {
     const first = givenName?.[0] || "";
     const last = surname?.[0] || "";
@@ -364,7 +377,6 @@ function RouteComponent() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      {/* Patient Header */}
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between">
@@ -397,16 +409,10 @@ function RouteComponent() {
                 </div>
               </div>
             </div>
-            {/*TODO: add patient actions*/}
-            {/*<div className="flex gap-2">
-              <Button variant="outline">Edit Patient</Button>
-              <Button>New Visit</Button>
-            </div>*/}
           </div>
         </CardHeader>
       </Card>
 
-      {/* Demographics and Contact */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -416,8 +422,8 @@ function RouteComponent() {
             <div className="flex justify-between">
               <span className="text-muted-foreground">Date of Birth</span>
               <span className="font-medium">
-                {patient.date_of_birth
-                  ? format(new Date(patient.date_of_birth), "MMM dd, yyyy")
+                {patientDateOfBirth
+                  ? format(patientDateOfBirth, "MMM dd, yyyy")
                   : "—"}
               </span>
             </div>
@@ -470,10 +476,8 @@ function RouteComponent() {
         </Card>
       </div>
 
-      {/* Vitals Section */}
       <PatientVitalsCard vital={mostRecentVital} />
 
-      {/* Tabs for Additional Information */}
       <Tabs defaultValue="visits" className="w-full">
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="visits">Recent Visits</TabsTrigger>
@@ -569,6 +573,7 @@ function RouteComponent() {
           <PrescriptionsList
             prescriptions={prescriptions}
             pagination={rxPag}
+            statusCounts={rxStatusCounts}
             onPageChange={handleRxPageChange}
             loading={rxLoading}
           />

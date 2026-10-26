@@ -1,41 +1,168 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# Dependencies
 node_modules
-.DS_Store
-dist
-dist-ssr
-*.local
-count.txt
+.pnp
+.pnp.js
+
+# Local env files
 .env
-.output
-.vinxi
-count.txt
-.nitro
-.tanstack
-.wrangler
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-
-.env.*
-!.env.example
-*.local.*
-
-
-.tanstack/*
-
-# Playwright
-/test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
-/playwright/.auth/
-
-/lib/
-.bsb.lock
-*.res.mjs
-*.gen.tsx
+# Testing
 coverage
 
+apps/e2e/
+
+# Turbo
+.turbo
+
+# Vercel
+.vercel
+
+# Build Outputs
+.next/
+out/
+build
+dist
+.build
+.output/
+.tanstack/
+
+# Stray ReScript build output at repo root (should only ever be packages/**/lib)
+/lib/
+
+# Debug/Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.DS_Store
+*.pem
+
+old.*
+
+.env.*
+.examples
+
+# moon
+.moon/cache
+.moon/docker
+
+.server
+postserver
+.resources/sample.csv
+
+*.local.txt
+*.local
+*.local.md
+*.local.json
+
+# Rust/Cargo
+target/
+*.rs.bk
+# Keep proptest-regressions/ tracked — they pin failing test cases
+
+# Tauri (keep gen/schemas/ — those are permission definitions)
+src-tauri/gen/android/
+src-tauri/gen/apple/
+
+# Mobile/Expo
+.expo/
+ios/
+android/
+*.ipa
+*.apk
+*.aab
+*.jsbundle
+expo-env.d.ts
+web-build/
+
+# Xcode
+xcuserdata
+DerivedData
+*.hmap
+*.xccheckout
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.xcuserstate
+
+# Android/Gradle
+.gradle
+local.properties
+*.hprof
+.cxx/
+*.iml
+
+# Signing keys & certs
+*.keystore
+!debug.keystore
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Fastlane
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
+
+# Python - somehow always creeps in through 3rd party cli tools etc
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+.agentbridge/
+
+# Local databases & WASM
+*.sqlite
+*.db
+*.wasm
 
 
-QA_TESTING_GUIDE.tsv
+# ReScript build artifacts
+packages/utils/js/lib/
+packages/utils/js/dist/
 
-# Uploaded assets and resources in "disk upload" mode.
-data/
+packages/hh-forms/**/*.mjs
+packages/hh-forms/**/*.res.mjs
+packages/hh-forms/**/*.gen.ts
+
+
+# ReScript build artifacts — caches/byproducts, never committed regardless of where the package lives
+packages/**/lib/
+packages/**/.bsb.lock
+.merlin
+*.res.d.mts
+
+
+# moon
+.moon/cache
+.moon/docker
+
+.aiproxy
+
+
+*.tsbuildinfo
+
+.docker
+.docker/
+scripts/load-test.js

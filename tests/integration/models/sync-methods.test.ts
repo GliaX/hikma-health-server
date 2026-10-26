@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { sql } from "kysely";
 import { v1 as uuidV1 } from "uuid";
 import { testDb } from "../setup";
 
 vi.mock("@/db", () => ({ default: testDb }));
 
-import Sync from "@/models/sync";
+import Sync, { isDateColumn, loadDateColumnsByTable } from "@/models/sync";
 import type { RequestCaller } from "@/types";
 
 // Track IDs for cleanup in dependency order
@@ -14,13 +14,15 @@ const createdIds: {
   visits: string[];
   clinics: string[];
   users: string[];
-  userClinicPermissions: string[];
+  permissions: string[];
+  appConfigKeys: string[];
 } = {
   patients: [],
   visits: [],
   clinics: [],
   users: [],
-  userClinicPermissions: [],
+  permissions: [],
+  appConfigKeys: [],
 };
 
 // --- Fixtures ---
@@ -66,15 +68,15 @@ const insertUser = async (clinicId: string) => {
       deleted_at: null,
     })
     .execute();
-
-  // Sync scoping is permission-driven: without a permissions row the user
-  // has no clinic scope and receives no records (fail-closed by design).
-  const ucpId = uuidV1();
-  createdIds.userClinicPermissions.push(ucpId);
+  // User callers are clinic-scoped by can_view_history / can_edit_records, so
+  // grant the test user provider-level permissions (mirrors the rows
+  // User.API.create writes in production).
+  const permissionId = uuidV1();
+  createdIds.permissions.push(permissionId);
   await testDb
     .insertInto("user_clinic_permissions")
     .values({
-      id: ucpId,
+      id: permissionId,
       user_id: id,
       clinic_id: clinicId,
       can_register_patients: true,
@@ -82,9 +84,17 @@ const insertUser = async (clinicId: string) => {
       can_edit_records: true,
       can_delete_records: false,
       is_clinic_admin: false,
+      can_edit_other_provider_event: false,
+      can_download_patient_reports: true,
+      can_prescribe_medications: true,
+      can_dispense_medications: false,
+      can_delete_patient_visits: false,
+      can_delete_patient_records: false,
+      created_by: null,
+      last_modified_by: null,
       created_at: sql`now()`,
       updated_at: sql`now()`,
-    })
+    } as any)
     .execute();
   return id;
 };
@@ -153,11 +163,13 @@ afterEach(async () => {
     await testDb.deleteFrom("visits").where("id", "=", id).execute();
   for (const id of createdIds.patients)
     await testDb.deleteFrom("patients").where("id", "=", id).execute();
-  for (const id of createdIds.userClinicPermissions)
+  for (const id of createdIds.permissions)
     await testDb
       .deleteFrom("user_clinic_permissions")
       .where("id", "=", id)
       .execute();
+  for (const key of createdIds.appConfigKeys)
+    await testDb.deleteFrom("app_config").where("key", "=", key).execute();
   for (const id of createdIds.users)
     await testDb.deleteFrom("users").where("id", "=", id).execute();
   for (const id of createdIds.clinics)
@@ -165,9 +177,10 @@ afterEach(async () => {
 
   createdIds.visits.length = 0;
   createdIds.patients.length = 0;
-  createdIds.userClinicPermissions.length = 0;
   createdIds.users.length = 0;
   createdIds.clinics.length = 0;
+  createdIds.permissions.length = 0;
+  createdIds.appConfigKeys.length = 0;
 });
 
 // --- Tests ---
@@ -178,10 +191,7 @@ describe("Sync.getDeltaRecords (integration)", () => {
     const userId = await insertUser(clinicId);
     const caller = makeMobileCaller(userId, clinicId);
 
-    // Use the DB clock so the boundary is in the same clock domain as
-    // server_created_at set by PostgreSQL NOW().
-    const { rows: [{ t0 }] } = await sql<{ t0: Date }>`SELECT now() AS t0`.execute(testDb);
-    const beforeInsert = t0.getTime();
+    const beforeInsert = Date.now();
     await new Promise((r) => setTimeout(r, 50));
 
     await insertPatient();
@@ -208,11 +218,14 @@ describe("Sync.getDeltaRecords (integration)", () => {
 
     const patientId = await insertPatient();
 
+    // Capture the marker via PG `now()` rather than JS `Date.now()`. PG and
+    // host clocks can drift by tens of ms; a JS-side marker breaks the
+    // `server_created_at < lastSyncDate` comparison whenever PG is ahead.
     await new Promise((r) => setTimeout(r, 50));
-    // Use the DB clock so the boundary is in the same clock domain as
-    // server_created_at / last_modified set by PostgreSQL NOW().
-    const { rows: [{ t }] } = await sql<{ t: Date }>`SELECT now() AS t`.execute(testDb);
-    const afterCreate = t.getTime();
+    const { rows: markerRows } = await sql<{
+      now: Date;
+    }>`SELECT now() AS now`.execute(testDb);
+    const afterCreate = markerRows[0]!.now.getTime();
     await new Promise((r) => setTimeout(r, 50));
 
     // Update the patient
@@ -230,6 +243,67 @@ describe("Sync.getDeltaRecords (integration)", () => {
     expect(found.given_name).toBe("UpdatedSync");
   });
 
+  // A long-lived install's watermark is newer than every row in these two
+  // tables, so a watermarked delta leaves it with no permissions and stale
+  // config forever.
+  it("returns app_config and user_clinic_permissions regardless of the client watermark", async () => {
+    const clinicId = await insertClinic();
+    const userId = await insertUser(clinicId);
+    const caller = makeMobileCaller(userId, clinicId);
+
+    // insertUser already granted (userId, clinicId) with fresh timestamps;
+    // the primary key is (user_id, clinic_id), so replace that row with the
+    // 30-day-old one this test needs.
+    const permissionId = uuidV1();
+    createdIds.permissions.push(permissionId);
+    await testDb
+      .deleteFrom("user_clinic_permissions")
+      .where("user_id", "=", userId)
+      .where("clinic_id", "=", clinicId)
+      .execute();
+    await testDb
+      .insertInto("user_clinic_permissions")
+      .values({
+        id: permissionId,
+        user_id: userId,
+        clinic_id: clinicId,
+        can_register_patients: true,
+        can_view_history: true,
+        created_at: sql`now() - interval '30 days'`,
+        updated_at: sql`now() - interval '30 days'`,
+      } as any)
+      .execute();
+
+    const configKey = `sync-watermark-test-${permissionId}`;
+    createdIds.appConfigKeys.push(configKey);
+    await testDb
+      .insertInto("app_config")
+      .values({
+        namespace: "auth",
+        key: configKey,
+        value: "true",
+        data_type: "boolean",
+        created_at: sql`now() - interval '30 days'`,
+        updated_at: sql`now() - interval '30 days'`,
+        last_modified: sql`now() - interval '30 days'`,
+      })
+      .execute();
+
+    const delta = await Sync.getDeltaRecords(Date.now(), "mobile", caller);
+
+    const permission = delta.user_clinic_permissions.updated.find(
+      (r: any) => r.id === permissionId,
+    );
+    expect(permission).toBeDefined();
+    expect(permission.can_register_patients).toBe(true);
+
+    const config = delta.app_config.updated.find(
+      (r: any) => r.key === configKey,
+    );
+    expect(config).toBeDefined();
+    expect(config.value).toBe("true");
+  });
+
   it("returns soft-deleted record IDs in the deleted bucket", async () => {
     const clinicId = await insertClinic();
     const userId = await insertUser(clinicId);
@@ -238,10 +312,7 @@ describe("Sync.getDeltaRecords (integration)", () => {
     const patientId = await insertPatient();
 
     await new Promise((r) => setTimeout(r, 50));
-    // Use the DB clock so the boundary is in the same clock domain as
-    // deleted_at set by PostgreSQL NOW().
-    const { rows: [{ t1 }] } = await sql<{ t1: Date }>`SELECT now() AS t1`.execute(testDb);
-    const afterCreate = t1.getTime();
+    const afterCreate = Date.now();
     await new Promise((r) => setTimeout(r, 50));
 
     // Soft delete
@@ -289,10 +360,7 @@ describe("Sync.getDeltaRecords (integration)", () => {
     const userId = await insertUser(clinicId);
     const caller = makeMobileCaller(userId, clinicId);
 
-    // Use the DB clock so the boundary is in the same clock domain as
-    // server_created_at set by PostgreSQL NOW().
-    const { rows: [{ t2 }] } = await sql<{ t2: Date }>`SELECT now() AS t2`.execute(testDb);
-    const beforeInsert = t2.getTime();
+    const beforeInsert = Date.now();
     await new Promise((r) => setTimeout(r, 50));
 
     const patientId = await insertPatient();
@@ -530,9 +598,13 @@ describe("Sync.persistClientChanges (integration)", () => {
       },
     } as any;
 
-    await expect(
-      Sync.persistClientChanges(pushData, "mobile", caller),
-    ).resolves.toBeUndefined();
+    // An unknown table is warned about and skipped. It is deliberately NOT
+    // reported as rejected: the server will never accept it, so telling the
+    // client to keep those records pending would retry them forever.
+    const outcome = await Sync.persistClientChanges(pushData, "mobile", caller);
+    expect(outcome.accepted).toBe(0);
+    expect(outcome.rejected).toEqual({});
+    expect(outcome.byTable).toEqual({});
   });
 });
 
@@ -542,10 +614,7 @@ describe("Sync round-trip (integration)", () => {
     const userId = await insertUser(clinicId);
     const caller = makeMobileCaller(userId, clinicId);
 
-    // Use the DB clock so the boundary is in the same clock domain as
-    // server_created_at set by PostgreSQL NOW() inside persistClientChanges.
-    const { rows: [{ t3 }] } = await sql<{ t3: Date }>`SELECT now() AS t3`.execute(testDb);
-    const beforePush = t3.getTime();
+    const beforePush = Date.now();
     await new Promise((r) => setTimeout(r, 50));
 
     const patientId = uuidV1();
@@ -655,5 +724,50 @@ describe("Sync round-trip (integration)", () => {
       .executeTakeFirst();
 
     expect(Number(count!.count)).toBe(1);
+  });
+});
+
+describe("schema-driven date column detection", () => {
+  beforeAll(async () => {
+    await loadDateColumnsByTable();
+  });
+
+  it("recognises sync timestamps on patients", () => {
+    expect(isDateColumn("patients", "created_at")).toBe(true);
+    expect(isDateColumn("patients", "updated_at")).toBe(true);
+    expect(isDateColumn("patients", "last_modified")).toBe(true);
+    expect(isDateColumn("patients", "server_created_at")).toBe(true);
+    expect(isDateColumn("patients", "deleted_at")).toBe(true);
+    expect(isDateColumn("patients", "date_of_birth")).toBe(true);
+    expect(isDateColumn("patients", "image_timestamp")).toBe(true);
+  });
+
+  // The whole point of the column gate: PHI text fields whose values often
+  // look like long digit strings must NEVER be coerced to ISO timestamps.
+  it("rejects PHI text columns on patients", () => {
+    expect(isDateColumn("patients", "phone")).toBe(false);
+    expect(isDateColumn("patients", "government_id")).toBe(false);
+    expect(isDateColumn("patients", "external_patient_id")).toBe(false);
+    expect(isDateColumn("patients", "given_name")).toBe(false);
+  });
+
+  it("recognises model-specific date columns across the sync surface", () => {
+    expect(isDateColumn("appointments", "timestamp")).toBe(true);
+    expect(isDateColumn("patient_vitals", "timestamp")).toBe(true);
+    expect(isDateColumn("dispensing_records", "dispensed_at")).toBe(true);
+    expect(isDateColumn("prescriptions", "expiration_date")).toBe(true);
+    expect(isDateColumn("prescriptions", "prescribed_at")).toBe(true);
+    expect(isDateColumn("patient_problems", "onset_date")).toBe(true);
+    expect(isDateColumn("patient_problems", "end_date")).toBe(true);
+    expect(isDateColumn("device_pin_codes", "expires_at")).toBe(true);
+    expect(isDateColumn("device_pin_codes", "last_used_at")).toBe(true);
+    expect(isDateColumn("patient_additional_attributes", "date_value")).toBe(
+      true,
+    );
+  });
+
+  it("returns false for unknown tables and unknown columns", () => {
+    expect(isDateColumn("not_a_real_table", "created_at")).toBe(false);
+    expect(isDateColumn("patients", "not_a_real_column")).toBe(false);
   });
 });
